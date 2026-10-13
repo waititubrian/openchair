@@ -45,3 +45,16 @@ next-env.d.ts
 
 # prisma generated client (created by `npm run db:generate` / postinstall)
 /src/generated
+
+# AI agent
+/.claude/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.mcp.json
+/.cursor/
+.cursorrules
+.windsurfrules
+/.aider*
+/.github/copilot-instructions.md
+GEMINI.md
