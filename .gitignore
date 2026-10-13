@@ -62,3 +62,6 @@ GEMINI.md
 # playwright
 /test-results/
 /playwright-report/
+
+# Internal architecture notes (kept local, not committed)
+Architecture.md
