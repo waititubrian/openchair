@@ -1,0 +1,26 @@
+# Local Postgres for Openchair. Host port 5434 (5432 and 5433 are commonly taken) so it can sit
+# alongside other projects' databases. Names are prefixed "openchair".
+name: openchair
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: openchair-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: openchair
+      POSTGRES_PASSWORD: openchair
+      POSTGRES_DB: openchair
+    ports:
+      - "5434:5432"
+    volumes:
+      - openchair_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openchair -d openchair"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  openchair_pgdata:
+    name: openchair_pgdata
