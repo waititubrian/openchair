@@ -58,3 +58,7 @@ AGENTS.md
 /.aider*
 /.github/copilot-instructions.md
 GEMINI.md
+
+# playwright
+/test-results/
+/playwright-report/

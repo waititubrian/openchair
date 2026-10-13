@@ -12,3 +12,19 @@ export function findBySlug(slug: string, tx?: Tx) {
 export function findById(tenantId: string, tx?: Tx) {
   return dbOrTx(tx).tenant.findUnique({ where: { id: tenantId } });
 }
+
+export async function slugExists(slug: string, tx?: Tx): Promise<boolean> {
+  return (await dbOrTx(tx).tenant.count({ where: { slug } })) > 0;
+}
+
+export function create(
+  data: { slug: string; name: string; timezone: string; depositHoldMinutes: number },
+  tx?: Tx,
+) {
+  return dbOrTx(tx).tenant.create({ data });
+}
+
+export async function update(tenantId: string, data: { name?: string; timezone?: string }, tx?: Tx) {
+  const { count } = await dbOrTx(tx).tenant.updateMany({ where: { id: tenantId }, data });
+  return count > 0;
+}

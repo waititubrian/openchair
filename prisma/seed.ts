@@ -46,6 +46,21 @@ const LAST = ["Brooks", "Nguyen", "Okafor", "Reyes", "Patel", "Kim", "Walker", "
 
 type ServiceSeed = { name: string; durationMin: number; priceCents: number; depositCents: number };
 
+// Better Auth stores the password on a "credential" Account row (not on User), and
+// requires that row's accountId to equal the user's id or sign-in treats the user as unknown.
+async function createUser(email: string, name: string, platformRole?: "PLATFORM_ADMIN") {
+  const user = await prisma.user.create({ data: { email, name, emailVerified: true, platformRole } });
+  await prisma.account.create({
+    data: {
+      userId: user.id,
+      providerId: "credential",
+      accountId: user.id,
+      password: await hashPassword(PASSWORD),
+    },
+  });
+  return user;
+}
+
 async function wipe() {
   const slugs = ["fade-and-co", "sharp-cuts"];
   const tenants = await prisma.tenant.findMany({ where: { slug: { in: slugs } }, select: { id: true } });
@@ -158,8 +173,7 @@ async function seedShop(opts: {
   fromDay: number;
   toDay: number;
 }) {
-  const passwordHash = await hashPassword(PASSWORD);
-  const owner = await prisma.user.create({ data: { email: opts.owner.email, name: opts.owner.name, passwordHash } });
+  const owner = await createUser(opts.owner.email, opts.owner.name);
 
   const tenant = await prisma.tenant.create({
     data: {
@@ -190,7 +204,7 @@ async function seedShop(opts: {
   for (const [i, s] of opts.staff.entries()) {
     let userId: string | undefined;
     if (s.email) {
-      const u = await prisma.user.create({ data: { email: s.email, name: s.name, passwordHash } });
+      const u = await createUser(s.email, s.name);
       await prisma.membership.create({ data: { userId: u.id, tenantId: tenant.id, role: "STAFF" } });
       userId = u.id;
     } else if (i === 0) {
@@ -308,14 +322,7 @@ async function main() {
     toDay: 10,
   });
 
-  await prisma.user.create({
-    data: {
-      email: "admin@openchair.dev",
-      name: "Platform Admin",
-      passwordHash: await hashPassword(PASSWORD),
-      platformRole: "PLATFORM_ADMIN",
-    },
-  });
+  await createUser("admin@openchair.dev", "Platform Admin", "PLATFORM_ADMIN");
 
   console.log(`Done. Log in with the emails above, password: ${PASSWORD}`);
 }

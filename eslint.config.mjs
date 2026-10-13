@@ -36,6 +36,9 @@ const eslintConfig = defineConfig([
   { files: ["src/repositories/**/*.ts"], rules: { "no-restricted-imports": "off" } },
   // lib: may use Prisma packages (client init, domain re-exports) but is the bottom layer.
   { files: ["src/lib/**/*.{ts,tsx}"], rules: restrict(RAW_CLIENT, REPOSITORIES, SERVICES) },
+  // Better Auth owns the User/Session/Account/Verification tables, so its config module
+  // is the single non-repository file that hands the raw client to a library.
+  { files: ["src/lib/auth.ts"], rules: restrict(REPOSITORIES, SERVICES) },
   // Thin layer: pages, route handlers, server actions, components never see repositories.
   {
     files: ["src/app/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],
@@ -46,8 +49,8 @@ const eslintConfig = defineConfig([
     files: ["src/validators/**/*.ts"],
     rules: restrict(PRISMA, RAW_CLIENT, REPOSITORIES, SERVICES),
   },
-  // The seed script builds its own client (it runs outside Next).
-  { files: ["prisma/**/*.ts"], rules: { "no-restricted-imports": "off" } },
+  // The seed script and tests build their own client (they run outside Next).
+  { files: ["prisma/**/*.ts", "tests/**/*.ts"], rules: { "no-restricted-imports": "off" } },
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "src/generated/**"]),
 ]);
 

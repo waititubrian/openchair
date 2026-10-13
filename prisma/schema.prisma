@@ -76,16 +76,70 @@ model Tenant {
   subscription      Subscription?
 }
 
+// `User`, `Session`, `Account` and `Verification` follow Better Auth's core schema; the
+// library reads/writes them. Our additions: platformRole (set only by hand/seed, never by
+// sign-up input). Passwords live on Account (providerId = "credential"), not on User.
 model User {
-  id           String        @id @default(cuid())
-  email        String        @unique
-  name         String?
-  passwordHash String?
-  platformRole PlatformRole?
-  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+  id            String        @id @default(cuid())
+  email         String        @unique
+  name          String
+  emailVerified Boolean       @default(false)
+  image         String?
+  platformRole  PlatformRole?
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @default(now()) @updatedAt @db.Timestamptz(3)
 
+  sessions     Session[]
+  accounts     Account[]
   memberships  Membership[]
   staffProfile StaffMember[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime @db.Timestamptz(3)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String // provider's id for the user ("credential" accounts use the user id)
+  providerId            String // "credential" | "google"
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  password              String? // scrypt hash, only for providerId = "credential"
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
 }
 
 model Membership {
@@ -283,4 +337,13 @@ model WebhookEvent {
   receivedAt  DateTime  @default(now()) @db.Timestamptz(3)
   processedAt DateTime? @db.Timestamptz(3)
   error       String?
+}
+
+// Better Auth rate-limit counters (storage: "database"). One row per "<ip>|<path>" key.
+// In-memory counters would be useless on Vercel: every serverless instance has its own memory.
+model RateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt // epoch milliseconds of the last request in the window
 }
