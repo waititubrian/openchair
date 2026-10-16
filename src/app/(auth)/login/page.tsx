@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { FormError } from "@/components/form-error";
 import { GoogleButton } from "@/components/google-button";
 import { RedirectIfSignedIn } from "@/components/auth-gate";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,10 +26,19 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
   );
 }
 
+// Better Auth redirects here with ?error=<code> when a Google sign-in fails.
+const OAUTH_ERRORS: Record<string, string> = {
+  account_not_linked:
+    "An account with that email already exists. Sign in with your email and password instead.",
+  access_denied: "Google sign-in was cancelled.",
+};
+
 async function LoginBody({ searchParams }: Pick<PageProps<"/login">, "searchParams">) {
-  const { next } = await searchParams;
+  const { next, error } = await searchParams;
+  const code = Array.isArray(error) ? error[0] : error;
   return (
     <RedirectIfSignedIn>
+      {code && <FormError message={OAUTH_ERRORS[code] ?? "Sign-in failed. Please try again."} />}
       <LoginForm next={safeNextPath(Array.isArray(next) ? next[0] : next, "")} />
       {googleEnabled && <GoogleButton />}
     </RedirectIfSignedIn>

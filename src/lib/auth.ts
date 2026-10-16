@@ -2,6 +2,7 @@ import "server-only";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "@better-auth/prisma-adapter";
 import { nextCookies } from "better-auth/next-js";
+import type { GoogleOptions } from "better-auth/social-providers";
 import { env, requireEnv } from "@/lib/env";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
@@ -31,7 +32,13 @@ export const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_S
  *    (VERCEL env var). Anywhere else a client could send it themselves and dodge the limit,
  *    so we fall back to x-forwarded-for there.
  */
-export function createAuth(opts: { rateLimitEnabled?: boolean } = {}) {
+export function createAuth(
+  opts: {
+    rateLimitEnabled?: boolean;
+    /** Test seam: replace Google's token verification / profile fetch so linking can be tested offline. */
+    googleOverrides?: Partial<Pick<GoogleOptions, "verifyIdToken" | "getUserInfo">>;
+  } = {},
+) {
   return betterAuth({
     baseURL: env.APP_URL,
     secret: requireEnv("AUTH_SECRET"),
@@ -47,8 +54,23 @@ export function createAuth(opts: { rateLimitEnabled?: boolean } = {}) {
       },
     },
     socialProviders: googleEnabled
-      ? { google: { clientId: env.GOOGLE_CLIENT_ID!, clientSecret: env.GOOGLE_CLIENT_SECRET! } }
+      ? {
+          google: {
+            clientId: env.GOOGLE_CLIENT_ID!,
+            clientSecret: env.GOOGLE_CLIENT_SECRET!,
+            prompt: "select_account", // always show the account picker (people have several Google accounts)
+            ...opts.googleOverrides,
+          },
+        }
       : {},
+    // Account linking uses Better Auth's default: a Google sign-in is merged into an existing
+    // password account with the same email ONLY if that account's email is already verified.
+    // Until Phase 7 adds email verification no password account is verified, so such a Google
+    // sign-in is refused (account_not_linked). That is what stops someone registering
+    // victim@gmail.com with their own password and inheriting the victim's later Google login.
+    // This is a library default, not our code, so tests/integration/google-oauth.test.ts pins it.
+    // Send OAuth failures back to our login page instead of Better Auth's bare error page.
+    onAPIError: { errorURL: "/login" },
     session: { expiresIn: 60 * 60 * 24 * 14, updateAge: 60 * 60 * 24 },
     rateLimit: {
       enabled: opts.rateLimitEnabled ?? process.env.NODE_ENV === "production",

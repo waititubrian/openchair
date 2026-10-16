@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { SignOutButton } from "@/components/dashboard/sign-out-button";
 import { getTenantContext, requireUser } from "@/services/session.service";
 import { OnboardingWizard } from "./wizard";
 
@@ -19,5 +20,13 @@ export default function OnboardingPage() {
 async function OnboardingGate() {
   const user = await requireUser();
   if (await getTenantContext()) redirect("/dashboard"); // already set up
-  return <OnboardingWizard firstName={user.name.split(" ")[0]} />;
+  return (
+    <>
+      <div className="mb-6 flex items-center justify-between gap-4 text-sm text-muted-foreground">
+        <span className="truncate">Signed in as {user.email}</span>
+        <SignOutButton />
+      </div>
+      <OnboardingWizard firstName={user.name.split(" ")[0]} />
+    </>
+  );
 }

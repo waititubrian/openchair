@@ -25,6 +25,14 @@ Demo logins (password `openchair-demo`):
 | `owner@sharp.openchair.dev` | Shop owner (Free) |
 | `admin@openchair.dev` | Platform admin |
 
+## Google sign-in (optional)
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) create an **OAuth client ID** (type *Web application*).
+2. Add the authorized redirect URI `http://localhost:3000/api/auth/callback/google` (and `https://<your-domain>/api/auth/callback/google` for production).
+3. Put the client ID and secret in `.env` as `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` and restart `npm run dev`.
+
+The "Continue with Google" button appears on the login and signup pages only when both are set.
+
 ## Commands
 
 | | |
