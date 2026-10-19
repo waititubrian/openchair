@@ -43,3 +43,10 @@ export class PlanLimitError extends AppError {
     super(message, "PLAN_LIMIT", 402);
   }
 }
+
+/** A business-rule violation in otherwise well-formed input (maps to 400). */
+export class ValidationError extends AppError {
+  constructor(message: string) {
+    super(message, "VALIDATION", 400);
+  }
+}

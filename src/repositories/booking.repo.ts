@@ -22,3 +22,12 @@ export function list(tenantId: string, opts: { limit?: number } = {}, tx?: Tx) {
 export function findById(tenantId: string, bookingId: string, tx?: Tx) {
   return dbOrTx(tx).booking.findFirst({ where: { id: bookingId, tenantId }, include: withRelations });
 }
+
+/** Bookings that reference a service / staff member (any status). Used to block hard deletes. */
+export function countForService(tenantId: string, serviceId: string, tx?: Tx) {
+  return dbOrTx(tx).booking.count({ where: { tenantId, serviceId } });
+}
+
+export function countForStaff(tenantId: string, staffId: string, tx?: Tx) {
+  return dbOrTx(tx).booking.count({ where: { tenantId, staffId } });
+}

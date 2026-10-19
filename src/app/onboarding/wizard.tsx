@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { FormError } from "@/components/form-error";
 import { FormField } from "@/components/form-field";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ export function OnboardingWizard({ firstName }: { firstName: string }) {
   const [hours, setHours] = useState<Day[]>(defaultHours);
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(onboardAction, null);
   const checkId = useRef(0);
+  const timezoneId = useId();
 
   // Debounced "is this web address free?" check; stale responses are ignored.
   useEffect(() => {
@@ -141,9 +142,9 @@ export function OnboardingWizard({ firstName }: { firstName: string }) {
               </p>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="timezone">Timezone</Label>
+              <Label htmlFor={timezoneId}>Timezone</Label>
               <select
-                id="timezone"
+                id={timezoneId}
                 value={timezone}
                 onChange={(e) => setTzChoice(e.target.value)}
                 className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"

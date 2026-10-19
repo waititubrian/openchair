@@ -1,13 +1,15 @@
 import "server-only";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, canManageSchedule } from "@/lib/permissions";
 import type { TenantContext } from "@/lib/tenant-context";
-import { ForbiddenError, NotFoundError } from "@/lib/errors";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { localToUtc } from "@/lib/time";
 import * as availabilityRepo from "@/repositories/availability.repo";
 import * as staffRepo from "@/repositories/staff.repo";
 import * as timeOffRepo from "@/repositories/timeoff.repo";
-import type { TimeOffInput, WeeklyRulesInput } from "@/validators/availability";
+import type { TimeOffFormInput, TimeOffInput, WeeklyRulesInput } from "@/validators/availability";
 
 type Ctx = Pick<TenantContext, "tenantId" | "role"> & { user: { id: string } };
+type CtxWithTenant = Ctx & Pick<TenantContext, "tenant">;
 
 /**
  * THE rule for schedules: an OWNER manages every staff member's availability and time off
@@ -22,7 +24,7 @@ async function loadManageableStaff(ctx: Ctx, staffId: string) {
   assertCan(ctx, "availability:write");
   const staff = await staffRepo.findById(ctx.tenantId, staffId);
   if (!staff) throw new NotFoundError("Staff member");
-  if (ctx.role !== "OWNER" && staff.userId !== ctx.user.id) {
+  if (!canManageSchedule({ role: ctx.role, userId: ctx.user.id }, staff)) {
     throw new ForbiddenError("You can only manage your own availability");
   }
   return staff;
@@ -55,6 +57,17 @@ export async function addTimeOff(ctx: Ctx, staffId: string, input: TimeOffInput)
     endsAt: new Date(input.endsAt),
     reason: input.reason,
   });
+}
+
+/**
+ * Time off typed into the dashboard: wall-clock times in the SHOP's timezone, converted to UTC
+ * here (DST-safe). Same ownership rule as every other schedule change.
+ */
+export async function addTimeOffLocal(ctx: CtxWithTenant, staffId: string, input: TimeOffFormInput) {
+  const startsAt = localToUtc(input.startLocal, ctx.tenant.timezone);
+  const endsAt = localToUtc(input.endLocal, ctx.tenant.timezone);
+  if (!(endsAt > startsAt)) throw new ValidationError("Time off must end after it starts");
+  return addTimeOff(ctx, staffId, { startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), reason: input.reason });
 }
 
 export async function removeTimeOff(ctx: Ctx, timeOffId: string) {

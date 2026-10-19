@@ -20,3 +20,13 @@ export async function PATCH(req: Request, route: RouteContext<"/api/services/[id
     return Response.json(await catalogService.updateService(ctx, id, patch));
   });
 }
+
+// OWNER only. Refused (409) if the service has bookings; deactivate it instead.
+export async function DELETE(_req: Request, route: RouteContext<"/api/services/[id]">) {
+  return handle(async () => {
+    const { id } = await route.params;
+    const ctx = await requireApiTenantContext("services:write");
+    await catalogService.deleteService(ctx, id);
+    return new Response(null, { status: 204 });
+  });
+}

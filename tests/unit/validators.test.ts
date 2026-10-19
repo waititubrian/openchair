@@ -55,3 +55,53 @@ describe("onboardingInput", () => {
     expect(onboardingInput.safeParse({ ...validOnboarding, service: { ...validOnboarding.service, durationMin: 33 } }).success).toBe(false);
   });
 });
+
+import { createServiceInput, serviceFormInput } from "@/validators/catalog";
+import { weeklyHoursFormInput, weeklyRulesInput } from "@/validators/availability";
+import { createStaffInput } from "@/validators/staff";
+
+describe("service validators", () => {
+  it("the form turns dollars into cents and an empty description into null", () => {
+    const out = serviceFormInput.parse({
+      name: " Fade ", description: "", durationMin: "45", price: "40", deposit: "$12.50", active: true, staffIds: ["a"],
+    });
+    expect(out).toEqual({ name: "Fade", description: null, durationMin: 45, active: true, staffIds: ["a"], priceCents: 4000, depositCents: 1250 });
+  });
+  it("rejects bad durations and money on the form", () => {
+    const base = { name: "x", description: "", durationMin: "30", price: "10", deposit: "5", active: true, staffIds: [] };
+    expect(serviceFormInput.safeParse({ ...base, durationMin: "33" }).success).toBe(false);
+    expect(serviceFormInput.safeParse({ ...base, price: "ten" }).success).toBe(false);
+  });
+  it("the API shape applies defaults and refuses fractional cents", () => {
+    expect(createServiceInput.parse({ name: "x", durationMin: 30, priceCents: 100, depositCents: 0 })).toMatchObject({ active: true, staffIds: [], description: null });
+    expect(createServiceInput.safeParse({ name: "x", durationMin: 30, priceCents: 10.5, depositCents: 0 }).success).toBe(false);
+  });
+  it("staff input requires a name", () => {
+    expect(createStaffInput.safeParse({ name: "  " }).success).toBe(false);
+    expect(createStaffInput.parse({ name: "Dee" }).serviceIds).toEqual([]);
+  });
+});
+
+describe("weekly hours validators", () => {
+  it("accepts split shifts and converts HH:MM", () => {
+    const out = weeklyHoursFormInput.parse([
+      { dayOfWeek: 1, start: "09:00", end: "12:00" },
+      { dayOfWeek: 1, start: "13:00", end: "17:00" },
+    ]);
+    expect(out).toEqual([
+      { dayOfWeek: 1, startMinute: 540, endMinute: 720 },
+      { dayOfWeek: 1, startMinute: 780, endMinute: 1020 },
+    ]);
+  });
+  it("rejects overlapping intervals on one day, but not the same hours on different days", () => {
+    expect(weeklyRulesInput.safeParse([{ dayOfWeek: 1, startMinute: 540, endMinute: 720 }, { dayOfWeek: 1, startMinute: 700, endMinute: 800 }]).success).toBe(false);
+    expect(weeklyRulesInput.safeParse([{ dayOfWeek: 1, startMinute: 540, endMinute: 720 }, { dayOfWeek: 2, startMinute: 540, endMinute: 720 }]).success).toBe(true);
+    // touching end-to-start is fine
+    expect(weeklyRulesInput.safeParse([{ dayOfWeek: 1, startMinute: 540, endMinute: 720 }, { dayOfWeek: 1, startMinute: 720, endMinute: 800 }]).success).toBe(true);
+  });
+  it("rejects closing before opening and bad times; empty means closed all week", () => {
+    expect(weeklyHoursFormInput.safeParse([{ dayOfWeek: 1, start: "17:00", end: "09:00" }]).success).toBe(false);
+    expect(weeklyHoursFormInput.safeParse([{ dayOfWeek: 1, start: "9am", end: "17:00" }]).success).toBe(false);
+    expect(weeklyHoursFormInput.parse([])).toEqual([]);
+  });
+});

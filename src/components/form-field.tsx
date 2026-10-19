@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -5,7 +6,11 @@ type Props = React.ComponentProps<typeof Input> & { label: string; errors?: stri
 
 /** Label + input + inline error, wired together for accessibility. */
 export function FormField({ label, errors, id, name, ...props }: Props) {
-  const fieldId = id ?? String(name);
+  // Unique per field INSTANCE, not per name: Next keeps previously visited pages mounted (hidden),
+  // so two pages can both have a "price" field and a name-based id would make <label for> point
+  // at the hidden page's input.
+  const uid = useId();
+  const fieldId = id ?? `${name}-${uid}`;
   const errorId = `${fieldId}-error`;
   return (
     <div className="grid gap-1.5">

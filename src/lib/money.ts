@@ -13,3 +13,8 @@ export function parseMoneyToCents(input: string): number | null {
   const [whole, frac = ""] = cleaned.split(".");
   return Number(whole) * 100 + Number(frac.padEnd(2, "0"));
 }
+
+/** 3550 -> "35.50" (for filling a price input). */
+export function centsToInput(cents: number): string {
+  return (cents / 100).toFixed(2);
+}

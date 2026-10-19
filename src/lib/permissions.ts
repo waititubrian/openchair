@@ -44,3 +44,15 @@ export function can(role: MembershipRole, permission: Permission): boolean {
 export function assertCan(ctx: { role: MembershipRole }, permission: Permission): void {
   if (!can(ctx.role, permission)) throw new ForbiddenError("Your role doesn't have access to this");
 }
+
+/**
+ * Who may edit a staff member's schedule (weekly hours, time off): an OWNER always; a STAFF user
+ * only their own StaffMember (the one whose userId is theirs). One rule, used by the service
+ * (enforcement) and the pages (deciding whether to render the editor).
+ */
+export function canManageSchedule(
+  actor: { role: MembershipRole; userId: string },
+  staffMember: { userId: string | null },
+): boolean {
+  return actor.role === "OWNER" || (can(actor.role, "availability:write") && staffMember.userId === actor.userId);
+}

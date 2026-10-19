@@ -1,4 +1,4 @@
-import { formatInTimeZone } from "date-fns-tz";
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 
 // Time helpers. Availability is stored as local wall-clock minutes after midnight.
 // Conversion of a local date+time in a tenant timezone to a UTC instant happens in
@@ -39,4 +39,12 @@ export function listTimeZones(): string[] {
 /** Format a UTC instant in a tenant's timezone, e.g. formatInZone(d, "America/New_York", "EEE d MMM, h:mm a"). */
 export function formatInZone(date: Date, timeZone: string, pattern = "EEE d MMM yyyy, h:mm a"): string {
   return formatInTimeZone(date, timeZone, pattern);
+}
+
+/**
+ * Interpret a wall-clock "YYYY-MM-DDTHH:mm" (what a datetime-local input gives) as a time in the
+ * given IANA timezone and return the UTC instant. DST-safe: the zone's rules decide the offset.
+ */
+export function localToUtc(local: string, timeZone: string): Date {
+  return fromZonedTime(local, timeZone);
 }

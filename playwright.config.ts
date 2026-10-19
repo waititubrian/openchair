@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 // E2E runs against the dev server (rate limiting is production-only in Better Auth, so
@@ -6,6 +8,9 @@ import { defineConfig, devices } from "@playwright/test";
 //   npm run db:up && npm run db:migrate && npm run db:seed
 export default defineConfig({
   testDir: "tests/e2e",
+  // Keep traces/artifacts OUTSIDE the project: the Next dev server watches the project folder and
+  // would hot-reload pages in the middle of a test whenever Playwright writes a file.
+  outputDir: join(tmpdir(), "openchair-playwright"),
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],

@@ -104,3 +104,17 @@ export async function cleanupRun(prisma: TestPrisma, run: string) {
   await prisma.tenant.deleteMany({ where: { id: { in: ids } } });
   await prisma.user.deleteMany({ where: { email: { contains: `-${run}@` } } });
 }
+
+import type { TenantContext } from "@/lib/tenant-context";
+
+/** A TenantContext for one of a fixture shop's two users, built from the database (no HTTP). */
+export async function ctxFor(prisma: TestPrisma, shop: ShopFixture, who: "owner" | "staff"): Promise<TenantContext> {
+  const u = who === "owner" ? shop.owner : shop.staffUser;
+  const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: shop.tenant.id } });
+  return {
+    user: { id: u.id, name: u.email, email: u.email },
+    tenant,
+    tenantId: tenant.id,
+    role: who === "owner" ? "OWNER" : "STAFF",
+  };
+}

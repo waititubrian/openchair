@@ -20,3 +20,13 @@ export async function PATCH(req: Request, route: RouteContext<"/api/staff/[id]">
     return Response.json(await staffService.updateStaffMember(ctx, id, patch));
   });
 }
+
+// OWNER only. Refused (409) if the person has bookings; deactivate them instead.
+export async function DELETE(_req: Request, route: RouteContext<"/api/staff/[id]">) {
+  return handle(async () => {
+    const { id } = await route.params;
+    const ctx = await requireApiTenantContext("staff:write");
+    await staffService.deleteStaffMember(ctx, id);
+    return new Response(null, { status: 204 });
+  });
+}

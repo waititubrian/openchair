@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { RESERVED_SLUGS } from "@/lib/constants/reserved-slugs";
-import { parseMoneyToCents } from "@/lib/money";
-import { hhmmToMinutes, isValidTimeZone } from "@/lib/time";
+import { isValidTimeZone } from "@/lib/time";
+import { moneyField as money, timeField as time } from "./fields";
 
 export const slugSchema = z
   .string()
@@ -14,25 +14,6 @@ export const slugSchema = z
 
 export const timezoneSchema = z.string().refine(isValidTimeZone, "Choose a valid timezone");
 
-const money = z
-  .string()
-  .transform((v, ctx) => {
-    const cents = parseMoneyToCents(v);
-    if (cents === null) {
-      ctx.addIssue({ code: "custom", message: "Enter an amount like 35 or 35.50" });
-      return z.NEVER;
-    }
-    return cents;
-  });
-
-const time = z.string().transform((v, ctx) => {
-  const minutes = hhmmToMinutes(v);
-  if (minutes === null) {
-    ctx.addIssue({ code: "custom", message: "Use HH:MM" });
-    return z.NEVER;
-  }
-  return minutes;
-});
 
 export const firstServiceInput = z
   .object({
