@@ -50,3 +50,10 @@ export class ValidationError extends AppError {
     super(message, "VALIDATION", 400);
   }
 }
+
+/** Too many requests from one client (maps to 429). */
+export class RateLimitError extends AppError {
+  constructor(message = "Too many attempts. Please wait a few minutes and try again.") {
+    super(message, "RATE_LIMITED", 429);
+  }
+}

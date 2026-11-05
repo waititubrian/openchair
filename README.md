@@ -52,14 +52,12 @@ development log are in **[Architecture.md](Architecture.md)**.
 
 ## Status and next steps
 
-Phases 1 (database, seed) and 2 (auth, onboarding, roles, tenant isolation) are done.
+Phases 1 to 4 are done: database and seed, auth and roles, dashboard CRUD, and the public booking flow (try `/b/fade-and-co` on the seeded demo).
 
-1. Dashboard CRUD for services, staff, availability and time off
-2. Slot generation and the public booking flow
-3. Stripe Connect deposits and webhooks
-4. Subscriptions and plan limits
-5. Emails, analytics, platform admin
-6. Final docs, landing page and deployment to Vercel and Neon
+1. Stripe Connect deposits and webhooks
+2. Subscriptions and plan limits
+3. Emails, analytics, platform admin
+4. Final docs, landing page and deployment to Vercel and Neon
 
 Known limitations (one shop per user, no email verification yet, and more) are listed in
 [Architecture.md](Architecture.md#14-known-limitations).

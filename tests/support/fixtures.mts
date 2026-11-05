@@ -118,3 +118,21 @@ export async function ctxFor(prisma: TestPrisma, shop: ShopFixture, who: "owner"
     role: who === "owner" ? "OWNER" : "STAFF",
   };
 }
+
+/**
+ * Open both staff members every day 09:00-17:00 (so a test can use any date) and return handy ids.
+ * Shop timezone is America/New_York (set by seedShop).
+ */
+export async function openWholeWeek(prisma: TestPrisma, shop: ShopFixture) {
+  const staffIds = [shop.ownerStaff.id, shop.staffUserStaff.id];
+  await prisma.availabilityRule.deleteMany({ where: { tenantId: shop.tenant.id } });
+  await prisma.availabilityRule.createMany({
+    data: staffIds.flatMap((staffId) =>
+      [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({ tenantId: shop.tenant.id, staffId, dayOfWeek, startMinute: 540, endMinute: 1020 })),
+    ),
+  });
+  // The fixture's own sample booking and time off would get in the way of date-based tests.
+  await prisma.booking.deleteMany({ where: { tenantId: shop.tenant.id } });
+  await prisma.timeOff.deleteMany({ where: { tenantId: shop.tenant.id } });
+  return { staffIds };
+}

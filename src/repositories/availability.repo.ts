@@ -19,3 +19,11 @@ export async function replaceWeekly(tenantId: string, staffId: string, rules: We
     data: rules.map((r) => ({ ...r, tenantId, staffId })),
   });
 }
+
+/** Weekly rules for several staff members at once (the slot picker loads everyone in one query). */
+export function listForStaffIds(tenantId: string, staffIds: string[], tx?: Tx) {
+  return dbOrTx(tx).availabilityRule.findMany({
+    where: { tenantId, staffId: { in: staffIds } },
+    select: { staffId: true, dayOfWeek: true, startMinute: true, endMinute: true },
+  });
+}

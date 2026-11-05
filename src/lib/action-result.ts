@@ -7,6 +7,8 @@ export type ActionResult<T = undefined> =
   | {
       ok: false;
       error: string;
+      /** Machine-readable reason (e.g. SLOT_UNAVAILABLE) so a form can offer the right next step. */
+      code?: string;
       fieldErrors?: Record<string, string[] | undefined>;
       /** Non-secret submitted values, echoed back because React resets the form after an action. */
       values?: Record<string, string>;
@@ -23,7 +25,7 @@ export function toActionError(e: unknown): Extract<ActionResult, { ok: false }> 
     }
     return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
   }
-  if (e instanceof AppError) return { ok: false, error: e.message };
+  if (e instanceof AppError) return { ok: false, error: e.message, code: e.code };
   console.error(e);
   return { ok: false, error: "Something went wrong. Please try again." };
 }

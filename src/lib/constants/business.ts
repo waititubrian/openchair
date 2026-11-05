@@ -39,7 +39,14 @@ export const BOOKING = {
   minNoticeMinutes: 60,
   /** How far ahead the public page lets customers book. */
   maxAdvanceDays: 60,
+  /** One customer (email) can hold at most this many upcoming live bookings in one shop. */
+  maxActiveBookingsPerCustomer: 5,
+  /** Days shown per page on the public time picker. */
+  daysPerPage: 7,
 } as const;
+
+/** Throttle on the PUBLIC booking form (no login to rate-limit by), per client IP and shop. */
+export const PUBLIC_BOOKING_RATE_LIMIT = { windowSeconds: 600, max: 10 } as const;
 
 /** Platform fee on a deposit, in cents, rounded down. */
 export function platformFeeCents(depositCents: number): number {

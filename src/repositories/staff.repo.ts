@@ -58,3 +58,12 @@ export async function setServices(tenantId: string, staffId: string, serviceIds:
   await dbOrTx(tx).staffService.deleteMany({ where: { tenantId, staffId } });
   if (serviceIds.length) await assignServices(tenantId, staffId, serviceIds, tx);
 }
+
+/** Active staff who perform a service: the people a customer can choose between. */
+export function listBookableForService(tenantId: string, serviceId: string, tx?: Tx) {
+  return dbOrTx(tx).staffMember.findMany({
+    where: { tenantId, active: true, staffServices: { some: { serviceId } } },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}

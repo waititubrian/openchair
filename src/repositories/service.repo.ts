@@ -56,3 +56,16 @@ export async function setStaff(tenantId: string, serviceId: string, staffIds: st
     await db.staffService.createMany({ data: staffIds.map((staffId) => ({ tenantId, serviceId, staffId })) });
   }
 }
+
+/** What the public booking page offers. */
+export function listActive(tenantId: string, tx?: Tx) {
+  return dbOrTx(tx).service.findMany({ where: { tenantId, active: true }, orderBy: { name: "asc" } });
+}
+
+/** Active services that at least one ACTIVE staff member performs (the rest can't be booked). */
+export function listBookable(tenantId: string, tx?: Tx) {
+  return dbOrTx(tx).service.findMany({
+    where: { tenantId, active: true, staffServices: { some: { staff: { active: true } } } },
+    orderBy: { name: "asc" },
+  });
+}
