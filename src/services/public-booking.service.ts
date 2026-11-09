@@ -1,5 +1,5 @@
 import "server-only";
-import { BOOKING, PUBLIC_BOOKING_RATE_LIMIT } from "@/lib/constants/business";
+import { BOOKING, MIN_DEPOSIT_CENTS, PUBLIC_BOOKING_RATE_LIMIT } from "@/lib/constants/business";
 import { addDaysToDate, dateOfInstant, localInstant, todayIn } from "@/lib/dates";
 import type { BookingStatus, Service, Tenant } from "@/lib/domain";
 import { ConflictError, NotFoundError, RateLimitError, SlotUnavailableError, ValidationError } from "@/lib/errors";
@@ -8,6 +8,7 @@ import { formatInZone } from "@/lib/time";
 import * as availabilityRepo from "@/repositories/availability.repo";
 import * as bookingRepo from "@/repositories/booking.repo";
 import * as customerRepo from "@/repositories/customer.repo";
+import * as paymentRepo from "@/repositories/payment.repo";
 import { isOverlapViolation, isUniqueViolation } from "@/repositories/prisma-errors";
 import * as rateLimitRepo from "@/repositories/rate-limit.repo";
 import * as serviceRepo from "@/repositories/service.repo";
@@ -243,7 +244,7 @@ export async function createBooking(
     );
   }
 
-  const needsDeposit = service.depositCents > 0 && tenant.chargesEnabled;
+  const needsDeposit = service.depositCents >= MIN_DEPOSIT_CENTS && tenant.chargesEnabled;
   const status = needsDeposit ? ("PENDING_PAYMENT" as const) : ("CONFIRMED" as const);
   const holdExpiresAt = needsDeposit ? new Date(now.getTime() + tenant.depositHoldMinutes * 60_000) : null;
 
@@ -292,10 +293,12 @@ async function upsertCustomer(tenantId: string, data: { name: string; email: str
 // ---- confirmation page --------------------------------------------------------------------------
 
 /** What the confirmation page may show: this one booking, addressed by its unguessable token. */
-export async function getConfirmation(slug: string, publicToken: string) {
+export async function getConfirmation(slug: string, publicToken: string, now: Date = new Date()) {
   const tenant = await loadTenant(slug);
   const booking = await bookingRepo.findByPublicToken(tenant.id, publicToken);
   if (!booking) throw new NotFoundError("Booking");
+  const payments = booking.status === "CANCELLED" ? [] : await paymentRepo.listForBooking(tenant.id, booking.id);
+  const holdActive = !booking.holdExpiresAt || booking.holdExpiresAt >= now;
   return {
     shop: toPublicShop(tenant),
     booking: {
@@ -309,6 +312,9 @@ export async function getConfirmation(slug: string, publicToken: string) {
       priceCents: booking.priceCents,
       depositCents: booking.depositCents,
       holdExpiresAt: booking.holdExpiresAt,
+      /** Waiting for the deposit, the hold hasn't lapsed and the shop can take card payments. */
+      payable: booking.status === "PENDING_PAYMENT" && tenant.chargesEnabled && holdActive,
+      depositPaidOnline: payments.some((p) => p.status === "SUCCEEDED"),
     },
   };
 }

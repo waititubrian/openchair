@@ -49,20 +49,21 @@ enum PaymentStatus {
 }
 
 model Tenant {
-  id                 String   @id @default(cuid())
-  slug               String   @unique
-  name               String
-  timezone           String // IANA, e.g. "America/New_York"
-  currency           String   @default("usd")
-  plan               Plan     @default(FREE) // denormalised from Subscription; written only by webhooks
-  stripeCustomerId   String?  @unique // platform-account customer (Stripe Billing)
-  stripeAccountId    String?  @unique // Connect Express account (deposits)
-  chargesEnabled     Boolean  @default(false)
-  payoutsEnabled     Boolean  @default(false)
-  detailsSubmitted   Boolean  @default(false)
-  depositHoldMinutes Int      @default(15)
-  createdAt          DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+  id                    String   @id @default(cuid())
+  slug                  String   @unique
+  name                  String
+  timezone              String // IANA, e.g. "America/New_York"
+  currency              String   @default("usd")
+  plan                  Plan     @default(FREE) // denormalised from Subscription; written only by webhooks
+  stripeCustomerId      String?  @unique // platform-account customer (Stripe Billing)
+  stripeAccountId       String?  @unique // Connect Express account (deposits)
+  chargesEnabled        Boolean  @default(false)
+  payoutsEnabled        Boolean  @default(false)
+  detailsSubmitted      Boolean  @default(false)
+  stripeRequirementsDue String[] @default([]) // what Stripe still needs from the shop (from account.updated)
+  depositHoldMinutes    Int      @default(15)
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
 
   memberships       Membership[]
   services          Service[]

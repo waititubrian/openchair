@@ -34,6 +34,9 @@ export default async function BookingPage({ params }: PageProps<"/dashboard/book
           { label: "Status", value: b.status.replace("_", " ").toLowerCase() },
           { label: "Price", value: formatMoney(b.priceCents, ctx.tenant.currency) },
           { label: "Deposit", value: formatMoney(b.depositCents, ctx.tenant.currency) },
+          ...(b.payments.length
+            ? [{ label: "Payments", value: b.payments.map((p) => `${formatMoney(p.amountCents, ctx.tenant.currency)} ${p.status.toLowerCase()}`).join(", ") }]
+            : []),
         ]}
       />
       {canWrite && (cancellable || b.status === "CONFIRMED") && (

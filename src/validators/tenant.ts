@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RESERVED_SLUGS } from "@/lib/constants/reserved-slugs";
+import { MIN_DEPOSIT_CENTS } from "@/lib/constants/business";
 import { isValidTimeZone } from "@/lib/time";
 import { moneyField as money, timeField as time } from "./fields";
 
@@ -22,7 +23,11 @@ export const firstServiceInput = z
     price: money,
     deposit: money,
   })
-  .refine((s) => s.deposit <= s.price, { path: ["deposit"], message: "Deposit can't exceed the price" });
+  .refine((s) => s.deposit <= s.price, { path: ["deposit"], message: "Deposit can't exceed the price" })
+  .refine((s) => s.deposit === 0 || s.deposit >= MIN_DEPOSIT_CENTS, {
+    path: ["deposit"],
+    message: `A deposit must be $0 or at least ${(MIN_DEPOSIT_CENTS / 100).toFixed(2)}`,
+  });
 
 // One open interval per working day (split shifts can be added later in availability).
 export const weeklyHoursInput = z

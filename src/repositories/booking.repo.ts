@@ -154,3 +154,90 @@ export function listByView(tenantId: string, view: "upcoming" | "past", now: Dat
     include: withRelations,
   });
 }
+
+// ---- payments (Phase 5) ------------------------------------------------------------------------
+
+/** What payment code needs to know about a booking (no customer details beyond the email). */
+export function findForPayment(tenantId: string, bookingId: string, tx?: Tx) {
+  return dbOrTx(tx).booking.findFirst({
+    where: { id: bookingId, tenantId },
+    select: {
+      id: true,
+      status: true,
+      cancelReason: true,
+      holdExpiresAt: true,
+      startsAt: true,
+      depositCents: true,
+      publicToken: true,
+      service: { select: { name: true } },
+      customer: { select: { email: true } },
+    },
+  });
+}
+
+export function findIdByPublicToken(tenantId: string, publicToken: string, tx?: Tx) {
+  return dbOrTx(tx).booking.findFirst({ where: { tenantId, publicToken }, select: { id: true } });
+}
+
+/** Deposit received: PENDING_PAYMENT -> CONFIRMED (the status guard makes this safe to repeat). */
+export async function confirmPending(tenantId: string, bookingId: string, tx?: Tx) {
+  const { count } = await dbOrTx(tx).booking.updateMany({
+    where: { id: bookingId, tenantId, status: "PENDING_PAYMENT" },
+    data: { status: "CONFIRMED", holdExpiresAt: null },
+  });
+  return count > 0;
+}
+
+/** The Checkout Session expired or was abandoned: free the slot if the booking is still waiting. */
+export async function cancelPending(tenantId: string, bookingId: string, reason: string, now: Date, tx?: Tx) {
+  const { count } = await dbOrTx(tx).booking.updateMany({
+    where: { id: bookingId, tenantId, status: "PENDING_PAYMENT" },
+    data: { status: "CANCELLED", cancelledAt: now, cancelReason: reason, holdExpiresAt: null },
+  });
+  return count > 0;
+}
+
+/**
+ * A customer paid AFTER their hold had been released. If nobody has taken the slot since, bring
+ * the booking back; otherwise change nothing (the caller refunds). The NOT EXISTS is a read, so
+ * a booking inserted at the same instant can still win: the exclusion constraint then rejects
+ * this UPDATE, the webhook fails and Stripe retries, and the retry sees the new booking and refunds.
+ */
+export async function reviveExpired(tenantId: string, bookingId: string, tx?: Tx): Promise<boolean> {
+  const rows = await dbOrTx(tx).$queryRaw<{ id: string }[]>`
+    UPDATE "Booking" AS b
+       SET "status" = 'CONFIRMED', "holdExpiresAt" = NULL, "cancelledAt" = NULL, "cancelReason" = NULL, "updatedAt" = now()
+     WHERE b."id" = ${bookingId}
+       AND b."tenantId" = ${tenantId}
+       AND b."status" = 'CANCELLED'
+       AND b."cancelReason" IN ('hold_expired', 'payment_expired')
+       AND b."startsAt" > now()
+       AND NOT EXISTS (
+         SELECT 1 FROM "Booking" AS o
+          WHERE o."staffId" = b."staffId"
+            AND o."id" <> b."id"
+            AND o."status" IN ('PENDING_PAYMENT', 'CONFIRMED')
+            AND tstzrange(o."startsAt", o."endsAt") && tstzrange(b."startsAt", b."endsAt")
+       )
+    RETURNING b."id"
+  `;
+  return rows.length > 0;
+}
+
+/**
+ * Housekeeping across ALL tenants (a scheduled job, not a request): cancel every expired hold.
+ * Returns the cancelled bookings so their Checkout Sessions can be expired too.
+ */
+export async function expireAllStaleHolds(now: Date, tx?: Tx) {
+  const db = dbOrTx(tx);
+  const stale = await db.booking.findMany({
+    where: { status: "PENDING_PAYMENT", holdExpiresAt: { lt: now } },
+    select: { id: true, tenantId: true },
+  });
+  if (stale.length === 0) return [];
+  await db.booking.updateMany({
+    where: { id: { in: stale.map((b) => b.id) }, status: "PENDING_PAYMENT" },
+    data: { status: "CANCELLED", cancelledAt: now, cancelReason: "hold_expired" },
+  });
+  return stale;
+}

@@ -28,3 +28,35 @@ export async function update(tenantId: string, data: { name?: string; timezone?:
   const { count } = await dbOrTx(tx).tenant.updateMany({ where: { id: tenantId }, data });
   return count > 0;
 }
+
+// ---- Stripe Connect state (Phase 5) ----------------------------------------------------------
+
+/** Webhooks identify the shop only by its connected-account id. */
+export function findByStripeAccountId(stripeAccountId: string, tx?: Tx) {
+  return dbOrTx(tx).tenant.findUnique({ where: { stripeAccountId } });
+}
+
+/** Remember the connected account, but never overwrite one that is already set. */
+export async function setStripeAccountId(tenantId: string, stripeAccountId: string, tx?: Tx) {
+  const { count } = await dbOrTx(tx).tenant.updateMany({ where: { id: tenantId, stripeAccountId: null }, data: { stripeAccountId } });
+  return count > 0;
+}
+
+export type StripeAccountState = {
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  requirementsDue: string[];
+};
+
+export function updateStripeState(stripeAccountId: string, state: StripeAccountState, tx?: Tx) {
+  return dbOrTx(tx).tenant.updateMany({
+    where: { stripeAccountId },
+    data: {
+      chargesEnabled: state.chargesEnabled,
+      payoutsEnabled: state.payoutsEnabled,
+      detailsSubmitted: state.detailsSubmitted,
+      stripeRequirementsDue: state.requirementsDue,
+    },
+  });
+}

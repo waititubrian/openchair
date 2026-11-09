@@ -33,6 +33,19 @@ Demo logins (password `openchair-demo`):
 
 The "Continue with Google" button appears on the login and signup pages only when both are set.
 
+## Stripe test mode (optional: online deposits)
+
+Without Stripe keys everything works; bookings simply confirm immediately and deposits are settled in the shop.
+
+1. In the Stripe Dashboard (test mode) copy a secret key into `STRIPE_SECRET_KEY` and enable **Connect** (Dashboard > Connect).
+2. Install the [Stripe CLI](https://docs.stripe.com/stripe-cli), run `stripe login`, then
+   `stripe listen --forward-connect-to localhost:3000/api/webhooks/stripe-connect` and put the `whsec_...` it prints in `STRIPE_CONNECT_WEBHOOK_SECRET`.
+3. Set `CRON_SECRET` (any long random string), restart `npm run dev`.
+4. Sign in as a shop owner, open **Payouts**, and click *Set up payouts with Stripe* (Stripe's test onboarding lets you skip the form).
+5. Book a service that has a deposit at `/b/<your-slug>` and pay with card `4242 4242 4242 4242`.
+
+Live keys are refused. Setting a key also activates the `@stripe` browser test (`npm run test:e2e`).
+
 ## Commands
 
 | | |
@@ -52,12 +65,11 @@ development log are in **[Architecture.md](Architecture.md)**.
 
 ## Status and next steps
 
-Phases 1 to 4 are done: database and seed, auth and roles, dashboard CRUD, and the public booking flow (try `/b/fade-and-co` on the seeded demo).
+Phases 1 to 5 are done: database and seed, auth and roles, dashboard CRUD, the public booking flow (try `/b/fade-and-co` on the seeded demo), and Stripe Connect deposits.
 
-1. Stripe Connect deposits and webhooks
-2. Subscriptions and plan limits
-3. Emails, analytics, platform admin
-4. Final docs, landing page and deployment to Vercel and Neon
+1. Subscriptions and plan limits
+2. Emails, analytics, platform admin
+3. Final docs, landing page and deployment to Vercel and Neon
 
 Known limitations (one shop per user, no email verification yet, and more) are listed in
 [Architecture.md](Architecture.md#14-known-limitations).

@@ -20,3 +20,10 @@ export async function consume(key: string, windowSeconds: number, now: Date, tx?
   `;
   return Number(rows[0].count);
 }
+
+/** Housekeeping: drop expired public-form counters (our "pub:" keys only; never Better Auth's). */
+export async function purgeExpired(windowSeconds: number, now: Date, tx?: Tx): Promise<number> {
+  const cutoff = now.getTime() - windowSeconds * 1000;
+  const { count } = await dbOrTx(tx).rateLimit.deleteMany({ where: { key: { startsWith: "pub:" }, lastRequest: { lt: BigInt(cutoff) } } });
+  return count;
+}

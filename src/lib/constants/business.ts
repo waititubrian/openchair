@@ -45,6 +45,19 @@ export const BOOKING = {
   daysPerPage: 7,
 } as const;
 
+/** Stripe cannot charge less than this (USD). A deposit is either 0 or at least this much. */
+export const MIN_DEPOSIT_CENTS = 50;
+
+/** Country new Express connected accounts are created in (the shop confirms it during onboarding). */
+export const CONNECT_COUNTRY = "US";
+
+/**
+ * Stripe won't let a Checkout Session live less than 30 minutes, which is longer than the booking
+ * hold. We use 31 to stay clear of the boundary. A payment that lands after the hold has lapsed is
+ * handled by the webhook (revive the booking if the slot is free, otherwise refund).
+ */
+export const CHECKOUT_SESSION_MINUTES = 31;
+
 /** Throttle on the PUBLIC booking form (no login to rate-limit by), per client IP and shop. */
 export const PUBLIC_BOOKING_RATE_LIMIT = { windowSeconds: 600, max: 10 } as const;
 

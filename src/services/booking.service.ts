@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError } from "@/lib/errors";
 import { assertCan } from "@/lib/permissions";
 import type { TenantContext } from "@/lib/tenant-context";
 import * as bookingRepo from "@/repositories/booking.repo";
+import * as paymentRepo from "@/repositories/payment.repo";
 
 // Dashboard-side bookings. (The customer-facing create flow is public-booking.service.)
 // Services take the already-verified TenantContext and re-assert their own permission.
@@ -23,7 +24,8 @@ export async function getBooking(ctx: Ctx, bookingId: string) {
   assertCan(ctx, "bookings:read");
   const booking = await bookingRepo.findById(ctx.tenantId, bookingId);
   if (!booking) throw new NotFoundError("Booking");
-  return booking;
+  const payments = await paymentRepo.listForBooking(ctx.tenantId, bookingId);
+  return { ...booking, payments: payments.map((p) => ({ status: p.status, amountCents: p.amountCents, applicationFeeCents: p.applicationFeeCents, createdAt: p.createdAt })) };
 }
 
 export type ManualStatus = "CANCELLED" | "COMPLETED" | "NO_SHOW";
