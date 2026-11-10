@@ -12,7 +12,8 @@
  *   owner@sharp.openchair.dev  OWNER of "Sharp Cuts" (Free plan)
  *   admin@openchair.dev        PLATFORM_ADMIN
  *
- * Stripe ids written here are FAKE placeholders ("seed_..."), only so the UI has data.
+ * M-Pesa receipts and request ids written here are FAKE placeholders ("SEED..."), only so the UI has data.
+ * All money is KES (integer cents, whole shillings).
  */
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
@@ -28,7 +29,7 @@ const prisma = new PrismaClient({
 });
 
 const PASSWORD = "openchair-demo";
-const TZ = "America/New_York";
+const TZ = "Africa/Nairobi"; // EAT, UTC+3, no daylight saving
 
 // Deterministic PRNG (mulberry32) so the demo data is the same on every run.
 function rng(seed: number) {
@@ -144,11 +145,14 @@ async function seedBookings(opts: {
             id: randomUUID(),
             tenantId: opts.tenantId,
             bookingId: id,
-            stripeCheckoutSessionId: `seed_cs_${id}`,
-            stripePaymentIntentId: `seed_pi_${id}`,
+            phone: `2547${String(10_000_000 + Math.floor(rand() * 89_999_999))}`,
+            merchantRequestId: `seed-m-${id.slice(0, 8)}`,
+            checkoutRequestId: `seed_ws_${id}`,
+            mpesaReceipt: `SEED${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`,
+            resultCode: 0,
             amountCents: svc.depositCents,
             applicationFeeCents: Math.floor((svc.depositCents * PLATFORM_FEE_PERCENT) / 100),
-            currency: "usd",
+            currency: "kes",
             status: "SUCCEEDED",
             createdAt: new Date(startsAt.getTime() - 3 * 86_400_000),
           });
@@ -182,15 +186,11 @@ async function seedShop(opts: {
       timezone: TZ,
       plan: opts.plan,
       memberships: { create: { userId: owner.id, role: "OWNER" } },
+      currency: "kes",
+      // Fade & Co takes deposits by M-Pesa (payout number set); Sharp Cuts doesn't, so it settles deposits in the shop.
+      payoutPhone: opts.plan === "PRO" ? "254712345678" : null,
       ...(opts.plan === "PRO" && {
-        subscription: {
-          create: {
-            stripeSubscriptionId: `seed_sub_${opts.slug}`,
-            status: "active",
-            plan: "PRO",
-            currentPeriodEnd: addDays(new Date(), 21),
-          },
-        },
+        subscription: { create: { plan: "PRO", currentPeriodEnd: addDays(new Date(), 21) } },
       }),
     },
   });
@@ -275,6 +275,16 @@ async function seedShop(opts: {
       toDay: opts.toDay,
     });
   }
+  if (opts.plan === "PRO") {
+    await prisma.subscriptionPayment.create({
+      data: { tenantId: tenant.id, phone: "254712345678", amountCents: 250_000, status: "SUCCEEDED", merchantRequestId: "seed-sub", checkoutRequestId: "seed_ws_sub", mpesaReceipt: "SEEDSUBPRO1", resultCode: 0, periodEnd: addDays(new Date(), 21), createdAt: addDays(new Date(), -9) },
+    });
+    // The platform has already paid out about 60% of what this shop is owed (whole shillings).
+    const sums = await prisma.payment.aggregate({ where: { tenantId: tenant.id, status: "SUCCEEDED" }, _sum: { amountCents: true, applicationFeeCents: true } });
+    const owed = (sums._sum.amountCents ?? 0) - (sums._sum.applicationFeeCents ?? 0);
+    const paid = Math.floor((owed * 0.6) / 100) * 100;
+    if (paid > 0) await prisma.payout.create({ data: { tenantId: tenant.id, amountCents: paid, phone: "254712345678", reference: "SEEDPAYOUT1", note: "Weekly payout (seed)", createdAt: addDays(new Date(), -6) } });
+  }
   console.log(`  ${opts.name}: ${services.length} services, ${staffIds.length} staff, ${customerIds.length} customers, ${total} bookings`);
 }
 
@@ -292,10 +302,10 @@ async function main() {
       { name: "Dee", email: "dee@demo.openchair.dev", days: [1, 2, 3, 4, 5], startHour: 10, endHour: 18, skip: ["Hot Towel Shave"] },
     ],
     services: [
-      { name: "Classic Haircut", durationMin: 30, priceCents: 3500, depositCents: 1000 },
-      { name: "Beard Trim", durationMin: 20, priceCents: 2000, depositCents: 500 },
-      { name: "Cut + Beard", durationMin: 50, priceCents: 5000, depositCents: 1500 },
-      { name: "Hot Towel Shave", durationMin: 30, priceCents: 3000, depositCents: 1000 },
+      { name: "Classic Haircut", durationMin: 30, priceCents: 50_000, depositCents: 10_000 },
+      { name: "Beard Trim", durationMin: 20, priceCents: 30_000, depositCents: 5_000 },
+      { name: "Cut + Beard", durationMin: 50, priceCents: 75_000, depositCents: 15_000 },
+      { name: "Hot Towel Shave", durationMin: 30, priceCents: 40_000, depositCents: 10_000 },
     ],
     seed: 42,
     fillRate: 0.22,
@@ -313,8 +323,8 @@ async function main() {
     owner: { email: "owner@sharp.openchair.dev", name: "Priya Shah" },
     staff: [{ name: "Priya", days: [1, 2, 3, 4, 5, 6], startHour: 9, endHour: 16 }],
     services: [
-      { name: "Haircut", durationMin: 30, priceCents: 2800, depositCents: 800 },
-      { name: "Fade", durationMin: 45, priceCents: 3500, depositCents: 1000 },
+      { name: "Haircut", durationMin: 30, priceCents: 40_000, depositCents: 10_000 },
+      { name: "Fade", durationMin: 45, priceCents: 60_000, depositCents: 15_000 },
     ],
     seed: 7,
     fillRate: 0.1,

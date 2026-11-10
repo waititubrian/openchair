@@ -6,6 +6,6 @@ import { requireApiTenantContext } from "@/services/session.service";
 export async function GET() {
   return handle(async () => {
     const ctx = await requireApiTenantContext("payouts:manage");
-    return Response.json(await payoutsService.getPayoutStatus(ctx));
+    return Response.json(await payoutsService.getPayoutOverview(ctx));
   });
 }

@@ -1,4 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// Deposit bookings need M-Pesa to be configured; createBooking itself never calls Safaricom.
+vi.mock("@/lib/mpesa", () => ({ isMpesaConfigured: () => true, getMpesa: async () => { throw new Error("not used here"); }, mpesaCallbackUrl: () => "http://localhost:3000/cb" }));
 import { ConflictError, NotFoundError, RateLimitError, SlotUnavailableError, ValidationError } from "@/lib/errors";
 import type { TenantContext } from "@/lib/tenant-context";
 import * as bookingService from "@/services/booking.service";
@@ -43,7 +46,7 @@ const rows = (where: object = {}) => prisma.booking.findMany({ where: { tenantId
 const reset = async () => {
   await prisma.booking.deleteMany({ where: { tenantId: S.tenant.id } });
   await prisma.timeOff.deleteMany({ where: { tenantId: S.tenant.id } });
-  await prisma.tenant.update({ where: { id: S.tenant.id }, data: { chargesEnabled: false } });
+  await prisma.tenant.update({ where: { id: S.tenant.id }, data: { payoutPhone: null } });
   await prisma.service.update({ where: { id: S.service.id }, data: { active: true } });
 };
 
@@ -67,9 +70,9 @@ describe("what the public can see", () => {
     const nobody = await prisma.service.create({ data: { tenantId: S.tenant.id, name: "Hidden nobody", durationMin: 30, priceCents: 1000, depositCents: 0 } }); // no staff perform it
     const { shop, services } = await publicBooking.getShop(S.tenant.slug);
     expect(services.map((s) => s.id)).toEqual([S.service.id]);
-    expect(shop).toEqual({ name: S.tenant.name, slug: S.tenant.slug, timezone: "America/New_York", currency: "usd", depositOnline: false });
+    expect(shop).toEqual({ name: S.tenant.name, slug: S.tenant.slug, timezone: "America/New_York", currency: "kes", depositOnline: false });
     const json = JSON.stringify({ shop, services });
-    for (const secret of [S.owner.email, S.owner.id, S.tenant.id, "stripe"]) expect(json).not.toContain(secret);
+    for (const secret of [S.owner.email, S.owner.id, S.tenant.id, "payoutPhone"]) expect(json).not.toContain(secret);
     await prisma.service.deleteMany({ where: { id: { in: [inactive.id, nobody.id] } } });
   });
 
@@ -151,10 +154,11 @@ describe("creating a booking", () => {
     expect(customer).toMatchObject({ name: "Jo Customer", email: `jo-${run}@it.example.com`, phone: "+1 555 010 2030" });
   });
 
-  it("with deposit due AND a card-ready shop, the booking is PENDING_PAYMENT and holds the slot", async () => {
+  it("with a deposit due AND online deposits switched on (payout number set), the booking is PENDING_PAYMENT and holds the slot", async () => {
     await reset();
-    await prisma.tenant.update({ where: { id: S.tenant.id }, data: { chargesEnabled: true, depositHoldMinutes: 15 } });
-    const r = await book({ staff: S.ownerStaff.id });
+    await prisma.tenant.update({ where: { id: S.tenant.id }, data: { payoutPhone: "254712345678", depositHoldMinutes: 15 } });
+    await expect(book({ staff: S.ownerStaff.id })).rejects.toBeInstanceOf(ValidationError); // no phone: refused before anything is held
+    const r = await book({ staff: S.ownerStaff.id, phone: "254712345678" });
     expect(r.status).toBe("PENDING_PAYMENT");
     const [b] = await rows();
     expect(b.holdExpiresAt?.toISOString()).toBe("2031-07-01T12:15:00.000Z"); // now + 15 min
@@ -328,20 +332,20 @@ describe("double booking cannot happen, even under races", () => {
 describe("holds: a pending booking blocks its slot only until it expires", () => {
   it("an unexpired hold blocks; after expiry the slot is offered and bookable, and the stale hold is cancelled", async () => {
     await reset();
-    await prisma.tenant.update({ where: { id: S.tenant.id }, data: { chargesEnabled: true, depositHoldMinutes: 15 } });
-    const held = await book({ staff: S.ownerStaff.id });
+    await prisma.tenant.update({ where: { id: S.tenant.id }, data: { payoutPhone: "254712345678", depositHoldMinutes: 15 } });
+    const held = await book({ staff: S.ownerStaff.id, phone: "254712345678" });
     expect(held.status).toBe("PENDING_PAYMENT");
 
     const during = new Date(NOW.getTime() + 10 * 60_000); // hold still valid
     const blocked = await publicBooking.getAvailability(S.tenant.slug, S.service.id, S.ownerStaff.id, WED, during);
     expect(blocked.days[0].slots.map((s) => s.startsAt)).not.toContain(WED_10AM);
-    await expect(book({ staff: S.ownerStaff.id }, { now: during })).rejects.toBeInstanceOf(SlotUnavailableError);
+    await expect(book({ staff: S.ownerStaff.id, phone: "254712345678" }, { now: during })).rejects.toBeInstanceOf(SlotUnavailableError);
 
     const after = new Date(NOW.getTime() + 20 * 60_000); // hold expired
     const freed = await publicBooking.getAvailability(S.tenant.slug, S.service.id, S.ownerStaff.id, WED, after);
     expect(freed.days[0].slots.map((s) => s.startsAt)).toContain(WED_10AM);
 
-    const next = await book({ staff: S.ownerStaff.id }, { now: after });
+    const next = await book({ staff: S.ownerStaff.id, phone: "254712345678" }, { now: after });
     expect(next.status).toBe("PENDING_PAYMENT");
     const all = await rows();
     expect(all.map((b) => [b.status, b.cancelReason]).sort()).toEqual([["CANCELLED", "hold_expired"], ["PENDING_PAYMENT", null]].sort());

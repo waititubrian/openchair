@@ -57,3 +57,17 @@ export class RateLimitError extends AppError {
     super(message, "RATE_LIMITED", 429);
   }
 }
+
+/** M-Pesa (Safaricom) could not be reached or refused the request (maps to 502). */
+export class MpesaError extends AppError {
+  constructor(message = "M-Pesa is not responding right now. Please try again in a moment.") {
+    super(message, "MPESA_ERROR", 502);
+  }
+}
+
+/** No M-Pesa credentials are configured on this server. */
+export class MpesaNotConfiguredError extends AppError {
+  constructor() {
+    super("M-Pesa payments are not set up on this server yet.", "MPESA_NOT_CONFIGURED", 503);
+  }
+}

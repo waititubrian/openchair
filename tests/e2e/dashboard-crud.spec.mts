@@ -41,34 +41,34 @@ test.describe("services", () => {
 
     await byLabel(owner, "Name", { exact: true }).fill("Beard sculpt");
     await byLabel(owner, "Minutes").fill("25");
-    await byLabel(owner, "Price ($)").fill("40");
-    await byLabel(owner, "Deposit ($)").fill("12.50");
+    await byLabel(owner, "Price (KES)").fill("400");
+    await byLabel(owner, "Deposit (KES)").fill("125");
     await byLabel(owner, `${S.marker} Owner Barber`).check();
     await owner.getByRole("button", { name: "Create service" }).click();
 
     await expect(owner).toHaveURL(/\/dashboard\/services$/);
     await expect(owner.getByRole("link", { name: "Beard sculpt" })).toBeVisible();
-    await expect(byText(owner, "25 min · $40.00 · $12.50 deposit")).toBeVisible();
+    await expect(byText(owner, "25 min · KSh 400 · KSh 125 deposit")).toBeVisible();
     const created = await prisma.service.findFirstOrThrow({ where: { tenantId: S.tenant.id, name: "Beard sculpt" } });
-    expect(created.priceCents).toBe(4000);
-    expect(created.depositCents).toBe(1250);
+    expect(created.priceCents).toBe(40_000);
+    expect(created.depositCents).toBe(12_500);
     expect(await prisma.staffService.count({ where: { serviceId: created.id } })).toBe(1);
 
     // edit
     await owner.getByRole("link", { name: "Beard sculpt" }).click();
-    await byLabel(owner, "Price ($)").fill("55");
+    await byLabel(owner, "Price (KES)").fill("550");
     await owner.getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
-    expect((await prisma.service.findUniqueOrThrow({ where: { id: created.id } })).priceCents).toBe(5500);
+    expect((await prisma.service.findUniqueOrThrow({ where: { id: created.id } })).priceCents).toBe(55_000);
 
     // a deposit above the price is refused, and what was typed stays on screen
-    await byLabel(owner, "Deposit ($)").fill("99");
+    await byLabel(owner, "Deposit (KES)").fill("9999");
     await owner.getByRole("button", { name: "Save changes" }).click();
     await expect(alertWith(owner, "Deposit can't exceed the price")).toBeVisible();
-    await expect(byLabel(owner, "Deposit ($)")).toHaveValue("99");
+    await expect(byLabel(owner, "Deposit (KES)")).toHaveValue("9999");
 
     // deactivate
-    await byLabel(owner, "Deposit ($)").fill("12.50");
+    await byLabel(owner, "Deposit (KES)").fill("125");
     await byLabel(owner, /Active/).uncheck();
     await owner.getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();

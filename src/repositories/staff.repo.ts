@@ -67,3 +67,13 @@ export function listBookableForService(tenantId: string, serviceId: string, tx?:
     orderBy: { name: "asc" },
   });
 }
+
+/** On downgrade to Free: keep the `keep` oldest ACTIVE staff members and deactivate the rest. */
+export async function deactivateAllButOldest(tenantId: string, keep: number, tx?: Tx): Promise<number> {
+  const db = dbOrTx(tx);
+  const active = await db.staffMember.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  const surplus = active.slice(keep).map((m) => m.id);
+  if (surplus.length === 0) return 0;
+  const { count } = await db.staffMember.updateMany({ where: { tenantId, id: { in: surplus } }, data: { active: false } });
+  return count;
+}

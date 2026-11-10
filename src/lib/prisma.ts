@@ -20,7 +20,8 @@ function createClient(): PrismaClient {
 }
 
 if (!globalForPrisma.prisma || globalForPrisma.prismaClass !== PrismaClient) {
-  void globalForPrisma.prisma?.$disconnect().catch(() => {}); // release the old pool
+  // The old client is deliberately NOT disconnected: in dev, separate route bundles can each see a
+  // different PrismaClient class and would end a pool another bundle is still using.
   globalForPrisma.prisma = createClient();
   globalForPrisma.prismaClass = PrismaClient;
 }

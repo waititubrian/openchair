@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-/** Re-checks the page every couple of seconds for up to `seconds` (waiting for Stripe's webhook). */
+/** Re-checks the page every couple of seconds for up to `seconds` (waiting for M-Pesa's result). */
 export function AutoRefresh({ seconds = 30, everyMs = 2500 }: { seconds?: number; everyMs?: number }) {
   const router = useRouter();
   useEffect(() => {

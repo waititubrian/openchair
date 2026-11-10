@@ -201,7 +201,8 @@ export async function cancelPending(tenantId: string, bookingId: string, reason:
  * A customer paid AFTER their hold had been released. If nobody has taken the slot since, bring
  * the booking back; otherwise change nothing (the caller refunds). The NOT EXISTS is a read, so
  * a booking inserted at the same instant can still win: the exclusion constraint then rejects
- * this UPDATE, the webhook fails and Stripe retries, and the retry sees the new booking and refunds.
+ * this UPDATE; the settlement fails and is retried by polling/the sweep, which then sees the new booking
+ * and flags the payment for a refund.
  */
 export async function reviveExpired(tenantId: string, bookingId: string, tx?: Tx): Promise<boolean> {
   const rows = await dbOrTx(tx).$queryRaw<{ id: string }[]>`
@@ -241,3 +242,27 @@ export async function expireAllStaleHolds(now: Date, tx?: Tx) {
   });
   return stale;
 }
+
+// ---- plan limits (Phase 6) ---------------------------------------------------------------------
+
+/**
+ * Serialise concurrent bookings for one shop in one month. Held until the transaction ends. Without it,
+ * two simultaneous requests could both count 29 bookings and both insert, ending at 31 on a plan that
+ * allows 30. (The slot constraint can't help: they may be for different times.)
+ */
+export async function lockTenantMonth(tenantId: string, monthKey: string, tx: Tx) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`bookings:${tenantId}:${monthKey}`}))`;
+}
+
+/** Bookings that count toward a month's limit: starting in [from, to), not cancelled, holds not expired. */
+export function countInRange(tenantId: string, from: Date, to: Date, now: Date, tx?: Tx) {
+  return dbOrTx(tx).booking.count({ where: { tenantId, startsAt: { gte: from, lt: to }, ...notExpiredOrDone(now) } });
+}
+
+/** Counts everything except cancelled bookings and lapsed holds (completed and no-shows still used a slot). */
+const notExpiredOrDone = (now: Date) => ({
+  OR: [
+    { status: { in: ["CONFIRMED", "COMPLETED", "NO_SHOW"] as BookingStatus[] } },
+    { status: "PENDING_PAYMENT" as const, OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gte: now } }] },
+  ],
+});

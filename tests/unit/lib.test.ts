@@ -49,7 +49,7 @@ describe("money and time helpers", () => {
     expect(parseMoneyToCents("-1")).toBeNull();
     expect(parseMoneyToCents("1.234")).toBeNull();
   });
-  it("formats cents", () => expect(formatMoney(3550)).toBe("$35.50"));
+  it("formats cents", () => expect(formatMoney(3550)).toBe("KSh 35.50"));
   it("round-trips HH:MM", () => {
     expect(hhmmToMinutes("09:30")).toBe(570);
     expect(minutesToHhmm(570)).toBe("09:30");

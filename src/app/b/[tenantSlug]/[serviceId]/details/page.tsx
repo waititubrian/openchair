@@ -57,7 +57,7 @@ async function Details({ params, searchParams }: Pick<PageProps<"/b/[tenantSlug]
           {service.depositCents > 0 && (
             <span className="text-muted-foreground">
               {shop.depositOnline
-                ? ` · ${formatMoney(service.depositCents, shop.currency)} deposit due now`
+                ? ` · ${formatMoney(service.depositCents, shop.currency)} deposit, paid now by M-Pesa`
                 : ` · ${formatMoney(service.depositCents, shop.currency)} deposit, paid at the shop`}
             </span>
           )}
@@ -66,6 +66,7 @@ async function Details({ params, searchParams }: Pick<PageProps<"/b/[tenantSlug]
       <BookingForm
         action={createBookingAction}
         pickerHref={pickerHref}
+        depositNow={shop.depositOnline && service.depositCents > 0}
         hidden={{ tenantSlug: shop.slug, serviceId: service.id, staff: staffParam, startsAt: startsAt.toISOString() }}
       />
     </section>

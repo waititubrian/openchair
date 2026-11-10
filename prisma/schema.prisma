@@ -45,36 +45,34 @@ enum PaymentStatus {
   PENDING
   SUCCEEDED
   FAILED
+  NEEDS_REFUND // money arrived but the booking can't be honoured: the platform returns it by hand
   REFUNDED
 }
 
 model Tenant {
-  id                    String   @id @default(cuid())
-  slug                  String   @unique
-  name                  String
-  timezone              String // IANA, e.g. "America/New_York"
-  currency              String   @default("usd")
-  plan                  Plan     @default(FREE) // denormalised from Subscription; written only by webhooks
-  stripeCustomerId      String?  @unique // platform-account customer (Stripe Billing)
-  stripeAccountId       String?  @unique // Connect Express account (deposits)
-  chargesEnabled        Boolean  @default(false)
-  payoutsEnabled        Boolean  @default(false)
-  detailsSubmitted      Boolean  @default(false)
-  stripeRequirementsDue String[] @default([]) // what Stripe still needs from the shop (from account.updated)
-  depositHoldMinutes    Int      @default(15)
-  createdAt             DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  name               String
+  timezone           String // IANA, e.g. "Africa/Nairobi"
+  currency           String   @default("kes")
+  plan               Plan     @default(FREE) // denormalised from Subscription; written only by the M-Pesa payment flow and the expiry job
+  payoutPhone        String? // M-Pesa number (2547XXXXXXXX) where the platform sends this shop's deposits; online deposits need it
+  depositHoldMinutes Int      @default(15)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
 
-  memberships       Membership[]
-  services          Service[]
-  staff             StaffMember[]
-  staffServices     StaffService[]
-  availabilityRules AvailabilityRule[]
-  timeOff           TimeOff[]
-  customers         Customer[]
-  bookings          Booking[]
-  payments          Payment[]
-  subscription      Subscription?
+  memberships          Membership[]
+  services             Service[]
+  staff                StaffMember[]
+  staffServices        StaffService[]
+  availabilityRules    AvailabilityRule[]
+  timeOff              TimeOff[]
+  customers            Customer[]
+  bookings             Booking[]
+  payments             Payment[]
+  subscription         Subscription?
+  subscriptionPayments SubscriptionPayment[]
+  payouts              Payout[]
 }
 
 // `User`, `Session`, `Account` and `Verification` follow Better Auth's core schema; the
@@ -294,45 +292,95 @@ model Booking {
   @@index([status, holdExpiresAt]) // expiry sweep
 }
 
+// A customer's booking deposit, paid by M-Pesa STK Push to the PLATFORM's shortcode (the platform
+// collects, keeps applicationFeeCents, and owes the rest to the shop: see Payout).
+// Money is integer cents of KES and always a whole number of shillings.
 model Payment {
-  id                      String        @id @default(cuid())
-  tenantId                String
-  bookingId               String
-  stripeCheckoutSessionId String        @unique
-  stripePaymentIntentId   String?       @unique
-  amountCents             Int
-  applicationFeeCents     Int // platform's cut of this deposit
-  currency                String
-  status                  PaymentStatus @default(PENDING)
-  failureReason           String?
-  createdAt               DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt               DateTime      @updatedAt @db.Timestamptz(3)
+  id                  String        @id @default(cuid())
+  tenantId            String
+  bookingId           String
+  phone               String // payer, 2547XXXXXXXX
+  amountCents         Int
+  applicationFeeCents Int // platform's cut of this deposit
+  currency            String        @default("kes")
+  status              PaymentStatus @default(PENDING)
+  merchantRequestId   String?
+  checkoutRequestId   String?       @unique // Safaricom's id for the STK prompt: how callbacks find us
+  mpesaReceipt        String?       @unique // e.g. "SFT2A1B3C4", set when the payment succeeds
+  resultCode          Int?
+  resultDesc          String?
+  failureReason       String?
+  lastQueriedAt       DateTime?     @db.Timestamptz(3)
+  createdAt           DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime      @updatedAt @db.Timestamptz(3)
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   booking Booking @relation(fields: [bookingId, tenantId], references: [id, tenantId])
 
   @@index([tenantId, createdAt])
   @@index([bookingId])
+  @@index([status, createdAt])
 }
 
+// A shop paying Openchair for the Pro plan, by M-Pesa STK Push. A successful payment buys
+// SUBSCRIPTION_PERIOD_DAYS of Pro; renewing extends from the current end date.
+model SubscriptionPayment {
+  id                String        @id @default(cuid())
+  tenantId          String
+  phone             String
+  amountCents       Int
+  currency          String        @default("kes")
+  status            PaymentStatus @default(PENDING)
+  merchantRequestId String?
+  checkoutRequestId String?       @unique
+  mpesaReceipt      String?       @unique
+  resultCode        Int?
+  resultDesc        String?
+  failureReason     String?
+  lastQueriedAt     DateTime?     @db.Timestamptz(3)
+  periodEnd         DateTime?     @db.Timestamptz(3) // set when it succeeds: the end of the period it bought
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([status, createdAt])
+}
+
+// Prepaid Pro access. Status is derived from the dates: active until currentPeriodEnd, then a grace
+// period (SUBSCRIPTION_GRACE_DAYS), then the daily job downgrades the shop to FREE.
 model Subscription {
-  id                   String    @id @default(cuid())
-  tenantId             String    @unique
-  stripeSubscriptionId String    @unique
-  status               String // Stripe status: active, past_due, canceled, ...
-  plan                 Plan
-  currentPeriodEnd     DateTime? @db.Timestamptz(3)
-  cancelAtPeriodEnd    Boolean   @default(false)
-  updatedAt            DateTime  @updatedAt @db.Timestamptz(3)
+  id               String   @id @default(cuid())
+  tenantId         String   @unique
+  plan             Plan
+  currentPeriodEnd DateTime @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
-// Idempotency ledger. The primary key IS Stripe's event id, so inserting the same
-// event twice fails with a unique violation, which the handler treats as "already done".
+// What the platform has paid out to a shop (the deposits it collected, minus its fee). A shop's
+// balance owed = sum(successful deposits - fees) - sum(payouts). Recorded by the platform admin.
+model Payout {
+  id          String   @id @default(cuid())
+  tenantId    String
+  amountCents Int
+  phone       String // where it was sent
+  reference   String? // M-Pesa receipt of the transfer
+  note        String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+}
+
+// Idempotency ledger for asynchronous provider callbacks. The primary key is
+// "mpesa:<CheckoutRequestID>": a callback for the same prompt is processed at most once.
 model WebhookEvent {
-  id          String    @id // Stripe event id, e.g. evt_...
-  source      String // "platform" | "connect"
+  id          String    @id
+  source      String // "mpesa"
   type        String
   payload     Json
   receivedAt  DateTime  @default(now()) @db.Timestamptz(3)

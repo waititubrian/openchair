@@ -22,7 +22,7 @@ export async function pageAs(browser: Browser, api: APIRequestContext): Promise<
 
 /**
  * Label lookup limited to VISIBLE elements. Next 16 keeps previously visited pages mounted but
- * hidden (display:none), so a label like "Price ($)" can match a field on a stale page as well as
+ * hidden (display:none), so a label like "Price (KES)" can match a field on a stale page as well as
  * the current one. Role-based queries ignore hidden elements already; label and text ones do not.
  */
 export const byLabel = (page: Page, label: string | RegExp, options?: { exact?: boolean }) =>

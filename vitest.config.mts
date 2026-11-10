@@ -11,5 +11,8 @@ export default defineConfig({
       "server-only": r("./tests/stubs/server-only.ts"),
     },
   },
-  test: { include: ["tests/unit/**/*.test.ts"] },
+  test: {
+    // env.ts validates these on import; unit tests never connect to anything.
+    env: { DATABASE_URL: "postgresql://unused:unused@localhost:1/unused", APP_URL: "http://localhost:3000" },
+    include: ["tests/unit/**/*.test.ts"] },
 });

@@ -36,9 +36,9 @@ export function OnboardingWizard({ firstName }: { firstName: string }) {
     () => "",
   );
   const [tzChoice, setTzChoice] = useState<string | null>(null);
-  const timezone = tzChoice ?? (browserTz || "America/New_York");
+  const timezone = tzChoice ?? (browserTz || "Africa/Nairobi");
   const [timezones] = useState(listTimeZones);
-  const [service, setService] = useState({ name: "Haircut", durationMin: "30", price: "35", deposit: "10" });
+  const [service, setService] = useState({ name: "Haircut", durationMin: "30", price: "500", deposit: "100" });
   const [hours, setHours] = useState<Day[]>(defaultHours);
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(onboardAction, null);
   const checkId = useRef(0);
@@ -177,14 +177,14 @@ export function OnboardingWizard({ firstName }: { firstName: string }) {
                 errors={errors?.["service.durationMin"]}
               />
               <FormField
-                label="Price ($)"
+                label="Price (KES)"
                 inputMode="decimal"
                 value={service.price}
                 onChange={(e) => setService({ ...service, price: e.target.value })}
                 errors={errors?.["service.price"]}
               />
               <FormField
-                label="Deposit ($)"
+                label="Deposit (KES)"
                 inputMode="decimal"
                 value={service.deposit}
                 onChange={(e) => setService({ ...service, deposit: e.target.value })}

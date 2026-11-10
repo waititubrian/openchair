@@ -13,8 +13,10 @@ export type {
   Booking,
   Customer,
   Payment,
+  Payout,
   Service,
   StaffMember,
   Subscription,
+  SubscriptionPayment,
   Tenant,
 } from "@/generated/prisma/client";

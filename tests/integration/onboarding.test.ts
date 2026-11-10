@@ -88,7 +88,9 @@ describe("tenantService.onboard (real database)", () => {
   });
 
   it("reports slug availability", async () => {
-    expect(await tenantService.isSlugAvailable("fade-and-co")).toMatchObject({ available: false }); // seeded demo shop
+    const owner = await newUser("slugs");
+    await tenantService.onboard(owner.id, input(`it-${run}-taken`));
+    expect(await tenantService.isSlugAvailable(`it-${run}-taken`)).toMatchObject({ available: false }); // an existing shop
     expect(await tenantService.isSlugAvailable(`it-${run}-free`)).toEqual({ available: true });
     expect(await tenantService.isSlugAvailable("admin")).toMatchObject({ available: false, reason: "That name is reserved" });
   });

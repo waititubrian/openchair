@@ -1,5 +1,6 @@
 "use server";
 
+import { refresh } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { toActionError, type ActionResult } from "@/lib/action-result";
@@ -30,27 +31,25 @@ export async function createBookingAction(_prev: ActionResult | null, formData: 
   } catch (e) {
     return toActionError(e);
   }
-  // A deposit is due: hand the customer to Stripe's hosted payment page. If Stripe can't be reached
-  // the time stays held and the confirmation page offers a "Pay deposit" button to try again.
+  // A deposit is due: send the M-Pesa prompt now. If it can't be sent (M-Pesa unreachable, a mistyped
+  // number) the time stays held and the confirmation page lets the customer send it again.
   if (status === "PENDING_PAYMENT") {
-    let checkoutUrl: string | null = null;
     try {
-      checkoutUrl = (await paymentService.startDepositCheckout(slug, token)).url;
+      await paymentService.startDepositPayment(slug, token, field(formData, "phone"));
     } catch (e) {
-      console.error("could not start deposit checkout", e);
+      console.error("could not send the deposit prompt", e);
     }
-    if (checkoutUrl) redirect(checkoutUrl);
   }
   redirect(confirmationPath(slug, token));
 }
 
-/** "Pay deposit" on the confirmation page: reuse the open payment session or create a new one. */
-export async function payDepositAction(slug: string, token: string): Promise<ActionResult> {
-  let url: string;
+/** "Send prompt again" on the confirmation page (a different number is allowed). */
+export async function payDepositAction(slug: string, token: string, _prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   try {
-    ({ url } = await paymentService.startDepositCheckout(slug, token));
+    await paymentService.startDepositPayment(slug, token, field(formData, "phone"));
   } catch (e) {
     return toActionError(e);
   }
-  redirect(url);
+  refresh();
+  return { ok: true };
 }

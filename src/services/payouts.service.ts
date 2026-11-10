@@ -1,102 +1,86 @@
 import "server-only";
-import type Stripe from "stripe";
-import { CONNECT_COUNTRY } from "@/lib/constants/business";
-import { env } from "@/lib/env";
-import { ConflictError, ValidationError } from "@/lib/errors";
+import { ConflictError, ForbiddenError, ValidationError } from "@/lib/errors";
 import { assertCan } from "@/lib/permissions";
-import { getStripe, isStripeConfigured } from "@/lib/stripe";
+import { normalizeKenyanPhone } from "@/lib/phone";
 import type { TenantContext } from "@/lib/tenant-context";
+import * as paymentRepo from "@/repositories/payment.repo";
+import * as payoutRepo from "@/repositories/payout.repo";
 import * as tenantRepo from "@/repositories/tenant.repo";
-import type { Tx } from "@/repositories/transaction";
+import { runInTransaction } from "@/repositories/transaction";
+import * as userRepo from "@/repositories/user.repo";
+import { isMpesaConfigured } from "@/lib/mpesa";
 
-// Payouts = the shop's Stripe Connect (Express) account: where customer deposits are paid out to.
-// OWNER only (payouts:manage). Stripe hosts the onboarding; we only create the account, send the
-// owner there, and mirror its status (charges/payouts enabled, what is still due).
+// The PLATFORM COLLECTS deposits (customers pay the Openchair shortcode) and owes each shop what it
+// collected minus the platform fee. This service shows a shop that balance and lets the platform admin
+// record a payout against it.
+//
+//   balance owed = sum(successful deposits - platform fee) - sum(payouts already made)
+//
+// Real-world note: holding other businesses' money normally needs a payment-service licence (or a
+// licensed aggregator doing the holding). This is a ledger for a demo/sandbox; see Architecture.md.
 type Ctx = Pick<TenantContext, "tenantId" | "role" | "tenant">;
-type CtxWithUser = Ctx & { user: { email: string } };
 
-function requireStripe() {
-  if (!isStripeConfigured()) throw new ValidationError("Card payments aren't configured on this server yet.");
-}
-
-export async function getPayoutStatus(ctx: Ctx) {
+export async function getPayoutOverview(ctx: Ctx) {
   assertCan(ctx, "payouts:manage");
-  const t = ctx.tenant;
+  const [collected, paidOutCents, recent, payouts, needsRefund] = await Promise.all([
+    paymentRepo.sumCollected(ctx.tenantId),
+    payoutRepo.sumPaidOut(ctx.tenantId),
+    paymentRepo.listRecent(ctx.tenantId, 15),
+    payoutRepo.listForTenant(ctx.tenantId, 10),
+    paymentRepo.listNeedingRefund(ctx.tenantId),
+  ]);
+  const owedCents = collected.collectedCents - collected.feeCents;
   return {
-    stripeConfigured: isStripeConfigured(),
-    connected: Boolean(t.stripeAccountId),
-    detailsSubmitted: t.detailsSubmitted,
-    chargesEnabled: t.chargesEnabled,
-    payoutsEnabled: t.payoutsEnabled,
-    requirementsDue: t.stripeRequirementsDue,
+    mpesaConfigured: isMpesaConfigured(),
+    payoutPhone: ctx.tenant.payoutPhone,
+    depositsOnline: isMpesaConfigured() && Boolean(ctx.tenant.payoutPhone),
+    collectedCents: collected.collectedCents,
+    feeCents: collected.feeCents,
+    owedCents,
+    paidOutCents,
+    balanceCents: owedCents - paidOutCents,
+    depositCount: collected.count,
+    recent,
+    payouts,
+    needsRefundCount: needsRefund.length,
   };
 }
 
-/** Mirror a Stripe account's state onto our tenant row (used by the webhook and by "refresh status"). */
-export async function applyAccountState(account: Stripe.Account, tx?: Tx) {
-  await tenantRepo.updateStripeState(
-    account.id,
-    {
-      chargesEnabled: Boolean(account.charges_enabled),
-      payoutsEnabled: Boolean(account.payouts_enabled),
-      detailsSubmitted: Boolean(account.details_submitted),
-      requirementsDue: account.requirements?.currently_due ?? [],
-    },
-    tx,
-  );
+/** Where the platform should send this shop's deposits. Turning it on is what enables online deposits. */
+export async function setPayoutPhone(ctx: Ctx, rawPhone: string) {
+  assertCan(ctx, "payouts:manage");
+  const phone = normalizeKenyanPhone(rawPhone);
+  if (!phone) throw new ValidationError("Enter a Kenyan M-Pesa number like 0712 345 678.");
+  await tenantRepo.setPayoutPhone(ctx.tenantId, phone);
+  return { payoutPhone: phone };
 }
 
-const returnUrls = () => ({
-  refresh_url: `${env.APP_URL}/dashboard/payouts/refresh`,
-  return_url: `${env.APP_URL}/dashboard/payouts/return`,
-});
+export async function clearPayoutPhone(ctx: Ctx) {
+  assertCan(ctx, "payouts:manage");
+  await tenantRepo.setPayoutPhone(ctx.tenantId, null);
+}
 
 /**
- * Create the shop's Express account if it doesn't have one, then return a one-time onboarding
- * link. Safe to call repeatedly or concurrently: the Stripe idempotency key makes account creation
- * return the SAME account, and we never overwrite an id that is already stored.
+ * Platform admin only: record that money was sent to a shop. Cannot exceed what the shop is owed, and the
+ * check and the insert happen under a per-shop lock so two payouts can't both claim the same balance.
  */
-export async function startOnboarding(ctx: CtxWithUser): Promise<{ url: string }> {
-  assertCan(ctx, "payouts:manage");
-  requireStripe();
-  const stripe = getStripe();
-
-  let accountId = ctx.tenant.stripeAccountId;
-  if (!accountId) {
-    const account = await stripe.accounts.create(
-      {
-        type: "express",
-        country: CONNECT_COUNTRY,
-        email: ctx.user.email,
-        business_profile: { name: ctx.tenant.name },
-        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-        metadata: { tenantId: ctx.tenantId },
-      },
-      { idempotencyKey: `connect_account_${ctx.tenantId}` },
-    );
-    await tenantRepo.setStripeAccountId(ctx.tenantId, account.id);
-    accountId = (await tenantRepo.findById(ctx.tenantId))?.stripeAccountId ?? account.id;
+export async function recordPayout(
+  actor: { id: string },
+  input: { tenantId: string; amountCents: number; reference?: string | null; note?: string | null },
+) {
+  const user = await userRepo.findById(actor.id);
+  if (user?.platformRole !== "PLATFORM_ADMIN") throw new ForbiddenError("Platform admins only");
+  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0 || input.amountCents % 100 !== 0) {
+    throw new ValidationError("Payout amounts are whole shillings above zero.");
   }
+  const tenant = await tenantRepo.findById(input.tenantId);
+  if (!tenant?.payoutPhone) throw new ConflictError("This shop hasn't set a payout number.", "NO_PAYOUT_PHONE");
 
-  const link = await stripe.accountLinks.create({ account: accountId, type: "account_onboarding", ...returnUrls() });
-  return { url: link.url };
-}
-
-/** After the owner returns from Stripe (which does NOT mean onboarding is complete): re-read the account. */
-export async function refreshStatus(ctx: Ctx): Promise<void> {
-  assertCan(ctx, "payouts:manage");
-  if (!ctx.tenant.stripeAccountId) return;
-  requireStripe();
-  await applyAccountState(await getStripe().accounts.retrieve(ctx.tenant.stripeAccountId));
-}
-
-/** Link to the shop's own Stripe Express dashboard (balance, payouts, payments). */
-export async function createDashboardLink(ctx: Ctx): Promise<{ url: string }> {
-  assertCan(ctx, "payouts:manage");
-  requireStripe();
-  if (!ctx.tenant.stripeAccountId || !ctx.tenant.detailsSubmitted) {
-    throw new ConflictError("Finish setting up payouts first.", "ONBOARDING_INCOMPLETE");
-  }
-  const link = await getStripe().accounts.createLoginLink(ctx.tenant.stripeAccountId);
-  return { url: link.url };
+  return runInTransaction(async (tx) => {
+    await payoutRepo.lockTenant(input.tenantId, tx);
+    const [collected, paidOut] = await Promise.all([paymentRepo.sumCollected(input.tenantId, tx), payoutRepo.sumPaidOut(input.tenantId, tx)]);
+    const balance = collected.collectedCents - collected.feeCents - paidOut;
+    if (input.amountCents > balance) throw new ConflictError("That's more than the shop is owed.", "EXCEEDS_BALANCE");
+    return payoutRepo.create(input.tenantId, { amountCents: input.amountCents, phone: tenant.payoutPhone!, reference: input.reference ?? null, note: input.note ?? null }, tx);
+  });
 }

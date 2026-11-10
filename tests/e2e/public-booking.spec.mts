@@ -47,6 +47,7 @@ test("a customer books a time with no account, and the shop sees it", async ({ b
   // time picker: pick tomorrow, then 9:00 AM
   await expect(page.getByRole("heading", { name: `${S.marker} Cut` })).toBeVisible();
   await page.locator(`a[href*="date=${tomorrow}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`date=${tomorrow}`)); // don't pick a time from the previous day's list
   await page.getByRole("link", { name: "9:00 AM", exact: true }).click();
 
   // details
@@ -54,7 +55,7 @@ test("a customer books a time with no account, and the shop sees it", async ({ b
   await expect(page.getByText(TZ).first()).toBeVisible();
   await byLabel(page, "Your name").fill("Riley Customer");
   await byLabel(page, "Email").fill(`riley-${run}@it.example.com`);
-  await byLabel(page, "Phone (optional)").fill("+1 555 010 0000");
+  await byLabel(page, "Phone (optional)").fill("0712 345 678");
   await page.getByRole("button", { name: "Confirm booking" }).click();
 
   await expect(page).toHaveURL(/\/confirmation\//);

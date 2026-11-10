@@ -61,11 +61,11 @@ import { weeklyHoursFormInput, weeklyRulesInput } from "@/validators/availabilit
 import { createStaffInput } from "@/validators/staff";
 
 describe("service validators", () => {
-  it("the form turns dollars into cents and an empty description into null", () => {
+  it("the form turns shillings into cents and an empty description into null", () => {
     const out = serviceFormInput.parse({
-      name: " Fade ", description: "", durationMin: "45", price: "40", deposit: "$12.50", active: true, staffIds: ["a"],
+      name: " Fade ", description: "", durationMin: "45", price: "500", deposit: "KSh 100", active: true, staffIds: ["a"],
     });
-    expect(out).toEqual({ name: "Fade", description: null, durationMin: 45, active: true, staffIds: ["a"], priceCents: 4000, depositCents: 1250 });
+    expect(out).toEqual({ name: "Fade", description: null, durationMin: 45, active: true, staffIds: ["a"], priceCents: 50_000, depositCents: 10_000 });
   });
   it("rejects bad durations and money on the form", () => {
     const base = { name: "x", description: "", durationMin: "30", price: "10", deposit: "5", active: true, staffIds: [] };

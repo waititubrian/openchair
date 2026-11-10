@@ -1,29 +1,30 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { refresh } from "next/cache";
 import { toActionError, type ActionResult } from "@/lib/action-result";
+import { field } from "@/lib/form-data";
 import * as payoutsService from "@/services/payouts.service";
 import { requireTenantContext } from "@/services/session.service";
 
-// OWNER only (payouts:manage). Both actions send the browser to a Stripe-hosted page.
-export async function startOnboardingAction(): Promise<ActionResult> {
+// OWNER only (payouts:manage).
+export async function savePayoutPhoneAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const ctx = await requireTenantContext("payouts:manage");
-  let url: string;
   try {
-    ({ url } = await payoutsService.startOnboarding(ctx));
+    await payoutsService.setPayoutPhone(ctx, field(formData, "phone"));
   } catch (e) {
     return toActionError(e);
   }
-  redirect(url);
+  refresh();
+  return { ok: true };
 }
 
-export async function openStripeDashboardAction(): Promise<ActionResult> {
+export async function clearPayoutPhoneAction(): Promise<ActionResult> {
   const ctx = await requireTenantContext("payouts:manage");
-  let url: string;
   try {
-    ({ url } = await payoutsService.createDashboardLink(ctx));
+    await payoutsService.clearPayoutPhone(ctx);
   } catch (e) {
     return toActionError(e);
   }
-  redirect(url);
+  refresh();
+  return { ok: true };
 }

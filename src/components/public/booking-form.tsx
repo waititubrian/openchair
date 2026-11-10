@@ -11,12 +11,15 @@ export function BookingForm({
   action,
   hidden,
   pickerHref,
+  depositNow = false,
 }: {
   action: (prev: ActionResult | null, formData: FormData) => Promise<ActionResult>;
   /** tenantSlug, serviceId, staff, startsAt: carried as hidden fields. */
   hidden: Record<string, string>;
   /** Where to send the customer if the time they picked was just taken. */
   pickerHref: string;
+  /** A deposit is paid by M-Pesa right after booking: the phone number is required. */
+  depositNow?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
   const [v, setV] = useState({ name: "", email: "", phone: "" });
@@ -48,9 +51,21 @@ export function BookingForm({
       )}
       <FormField label="Your name" name="name" autoComplete="name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} errors={errors?.name} />
       <FormField label="Email" name="email" type="email" autoComplete="email" required value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} errors={errors?.email} />
-      <FormField label="Phone (optional)" name="phone" type="tel" autoComplete="tel" value={v.phone} onChange={(e) => setV({ ...v, phone: e.target.value })} errors={errors?.phone} />
+      <FormField
+        label={depositNow ? "M-Pesa phone number" : "Phone (optional)"}
+        name="phone"
+        type="tel"
+        inputMode="tel"
+        autoComplete="tel"
+        placeholder="0712 345 678"
+        required={depositNow}
+        value={v.phone}
+        onChange={(e) => setV({ ...v, phone: e.target.value })}
+        errors={errors?.phone}
+      />
+      {depositNow && <p className="-mt-2 text-xs text-muted-foreground">We&apos;ll send an M-Pesa prompt to this number for the deposit.</p>}
       <Button type="submit" size="lg" disabled={pending}>
-        {pending ? "Booking…" : "Confirm booking"}
+        {pending ? "Booking…" : depositNow ? "Book and pay deposit" : "Confirm booking"}
       </Button>
     </form>
   );

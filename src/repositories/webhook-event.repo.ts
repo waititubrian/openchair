@@ -11,7 +11,7 @@ export type LedgerEntry = {
 };
 import { dbOrTx, type Tx } from "./transaction";
 
-// The idempotency ledger. The primary key IS Stripe's event id. Deliberately not tenant-scoped:
+// The idempotency ledger. The primary key is "mpesa:<CheckoutRequestID>". Deliberately not tenant-scoped:
 // an event arrives before we know which tenant it concerns.
 
 /**

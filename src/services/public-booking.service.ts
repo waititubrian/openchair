@@ -1,14 +1,17 @@
 import "server-only";
-import { BOOKING, MIN_DEPOSIT_CENTS, PUBLIC_BOOKING_RATE_LIMIT } from "@/lib/constants/business";
+import { BOOKING, PUBLIC_BOOKING_RATE_LIMIT } from "@/lib/constants/business";
 import { addDaysToDate, dateOfInstant, localInstant, todayIn } from "@/lib/dates";
 import type { BookingStatus, Service, Tenant } from "@/lib/domain";
 import { ConflictError, NotFoundError, RateLimitError, SlotUnavailableError, ValidationError } from "@/lib/errors";
 import { generateSlots, type Slot, type StaffAvailability } from "@/lib/slots";
+import { maskKenyanPhone } from "@/lib/phone";
 import { formatInZone } from "@/lib/time";
 import * as availabilityRepo from "@/repositories/availability.repo";
 import * as bookingRepo from "@/repositories/booking.repo";
 import * as customerRepo from "@/repositories/customer.repo";
 import * as paymentRepo from "@/repositories/payment.repo";
+import * as planService from "./plan.service";
+import { depositsOnline } from "./payment.service";
 import { isOverlapViolation, isUniqueViolation } from "@/repositories/prisma-errors";
 import * as rateLimitRepo from "@/repositories/rate-limit.repo";
 import * as serviceRepo from "@/repositories/service.repo";
@@ -38,7 +41,7 @@ export type PublicService = {
   depositCents: number;
 };
 
-/** `depositOnline`: deposits are paid by card at booking time (needs a Stripe-connected shop). */
+/** `depositOnline`: deposits are paid by M-Pesa at booking time (needs M-Pesa configured and the shop's payout number). */
 export type PublicShop = { name: string; slug: string; timezone: string; currency: string; depositOnline: boolean };
 
 const toPublicService = (s: Service): PublicService => ({
@@ -55,7 +58,7 @@ const toPublicShop = (t: Tenant): PublicShop => ({
   slug: t.slug,
   timezone: t.timezone,
   currency: t.currency,
-  depositOnline: t.chargesEnabled,
+  depositOnline: depositsOnline(t),
 });
 
 async function loadTenant(slug: string): Promise<Tenant> {
@@ -192,7 +195,7 @@ export type CreateResult = { publicToken: string; status: BookingStatus };
  *
  * Status: with a deposit due AND a shop that can take card payments the booking starts as
  * PENDING_PAYMENT and holds its slot for `depositHoldMinutes` (Phase 5 sends the customer to
- * Stripe). Otherwise (no deposit, or the shop hasn't connected payouts yet) it is CONFIRMED
+ * the M-Pesa prompt). Otherwise (no deposit, or the shop has no payout number yet) it is CONFIRMED
  * straight away and any deposit is settled in the shop.
  */
 export async function createBooking(
@@ -210,6 +213,10 @@ export async function createBooking(
   const { service, staff } = await loadBookable(tenant, input.serviceId);
   const pool = input.staff === "any" ? staff : staff.filter((s) => s.id === input.staff);
   if (pool.length === 0) throw new NotFoundError("Staff member");
+  // An online deposit is paid with M-Pesa, so we need the number to send the prompt to.
+  if (service.depositCents > 0 && depositsOnline(tenant) && !input.phone) {
+    throw new ValidationError("Enter your M-Pesa phone number to pay the deposit.");
+  }
 
   // A double-clicked submit must not fail with "slot taken" against the customer's OWN booking
   // (their first click already took the slot), so this check comes BEFORE the slot check.
@@ -244,7 +251,7 @@ export async function createBooking(
     );
   }
 
-  const needsDeposit = service.depositCents >= MIN_DEPOSIT_CENTS && tenant.chargesEnabled;
+  const needsDeposit = service.depositCents > 0 && depositsOnline(tenant);
   const status = needsDeposit ? ("PENDING_PAYMENT" as const) : ("CONFIRMED" as const);
   const holdExpiresAt = needsDeposit ? new Date(now.getTime() + tenant.depositHoldMinutes * 60_000) : null;
 
@@ -253,6 +260,8 @@ export async function createBooking(
   for (const staffId of candidates) {
     try {
       const booking = await runInTransaction(async (tx) => {
+        // Monthly booking limit for this plan (takes a per-shop, per-month lock so simultaneous bookings can't overshoot).
+        await planService.assertCanCreateBooking(tenant, startsAt, now, tx);
         // The constraint cannot call now(), so an expired hold would still block: free it first.
         await bookingRepo.expireStaleHolds(tenant.id, [staffId], startsAt, endsAt, now, tx);
         return bookingRepo.createLive(
@@ -312,9 +321,13 @@ export async function getConfirmation(slug: string, publicToken: string, now: Da
       priceCents: booking.priceCents,
       depositCents: booking.depositCents,
       holdExpiresAt: booking.holdExpiresAt,
-      /** Waiting for the deposit, the hold hasn't lapsed and the shop can take card payments. */
-      payable: booking.status === "PENDING_PAYMENT" && tenant.chargesEnabled && holdActive,
+      /** Waiting for the deposit, the hold hasn't lapsed and the shop takes M-Pesa deposits. */
+      payable: booking.status === "PENDING_PAYMENT" && depositsOnline(tenant) && holdActive,
       depositPaidOnline: payments.some((p) => p.status === "SUCCEEDED"),
+      /** The latest M-Pesa prompt, so the page can say "check your phone" or why it failed. */
+      payment: payments.at(-1)
+        ? { status: payments.at(-1)!.status, failureReason: payments.at(-1)!.failureReason, maskedPhone: maskKenyanPhone(payments.at(-1)!.phone), sentAt: payments.at(-1)!.createdAt }
+        : null,
     },
   };
 }

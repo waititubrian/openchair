@@ -1,9 +1,9 @@
 # Openchair
 
 Multi-tenant booking and deposits SaaS for barbershops and salons. Shops get a public booking
-link; customers book and pay a deposit without an account. **Stripe test mode only.**
+link; customers book and pay a deposit with M-Pesa without an account. Prices are in KES. **M-Pesa sandbox / simulator only.**
 
-**Stack:** Next.js 16, TypeScript, Tailwind, shadcn/ui, Prisma 7, Postgres, Better Auth, Zod, Stripe (planned), Resend (planned), Vitest, Playwright.
+**Stack:** Next.js 16, TypeScript, Tailwind, shadcn/ui, Prisma 7, Postgres, Better Auth, Zod, M-Pesa (Daraja), Resend (planned), Vitest, Playwright.
 
 ## Run locally
 
@@ -33,18 +33,11 @@ Demo logins (password `openchair-demo`):
 
 The "Continue with Google" button appears on the login and signup pages only when both are set.
 
-## Stripe test mode (optional: online deposits)
+## M-Pesa (optional: real sandbox)
 
-Without Stripe keys everything works; bookings simply confirm immediately and deposits are settled in the shop.
+Set `MPESA_MODE="simulator"` in `.env` for a built-in fake Safaricom: no keys needed. Pay with any Kenyan number to approve; `0700000001` cancels, `...002` has no funds, `...003` never answers.
 
-1. In the Stripe Dashboard (test mode) copy a secret key into `STRIPE_SECRET_KEY` and enable **Connect** (Dashboard > Connect).
-2. Install the [Stripe CLI](https://docs.stripe.com/stripe-cli), run `stripe login`, then
-   `stripe listen --forward-connect-to localhost:3000/api/webhooks/stripe-connect` and put the `whsec_...` it prints in `STRIPE_CONNECT_WEBHOOK_SECRET`.
-3. Set `CRON_SECRET` (any long random string), restart `npm run dev`.
-4. Sign in as a shop owner, open **Payouts**, and click *Set up payouts with Stripe* (Stripe's test onboarding lets you skip the form).
-5. Book a service that has a deposit at `/b/<your-slug>` and pay with card `4242 4242 4242 4242`.
-
-Live keys are refused. Setting a key also activates the `@stripe` browser test (`npm run test:e2e`).
+For the real Daraja sandbox: set `MPESA_MODE="daraja"`, add the consumer key, secret, shortcode and passkey from the [Daraja portal](https://developer.safaricom.co.ke/), expose your dev server with a tunnel (for example ngrok) and set `MPESA_CALLBACK_BASE_URL` to it. Set `MPESA_CALLBACK_SECRET` (16+ characters) and `CRON_SECRET`. Production M-Pesa is refused.
 
 ## Commands
 
@@ -56,7 +49,7 @@ Live keys are refused. Setting a key also activates the `@stripe` browser test (
 | `npm run typecheck` / `npm run lint` | Static checks |
 | `npm run db:reset` | Wipe, migrate and reseed |
 
-Plan limits, Pro price and the platform fee live in [src/lib/constants/business.ts](src/lib/constants/business.ts).
+Plan limits, Pro price (KSh 2,500) and the platform fee live in [src/lib/constants/business.ts](src/lib/constants/business.ts).
 
 ## Documentation
 
@@ -65,11 +58,10 @@ development log are in **[Architecture.md](Architecture.md)**.
 
 ## Status and next steps
 
-Phases 1 to 5 are done: database and seed, auth and roles, dashboard CRUD, the public booking flow (try `/b/fade-and-co` on the seeded demo), and Stripe Connect deposits.
+Phases 1 to 6 are done: database and seed, auth and roles, dashboard CRUD, the public booking flow (try `/b/fade-and-co` on the seeded demo), M-Pesa deposits and the Pro plan in KES.
 
-1. Subscriptions and plan limits
-2. Emails, analytics, platform admin
-3. Final docs, landing page and deployment to Vercel and Neon
+1. Emails, analytics, platform admin
+2. Final docs, landing page and deployment to Vercel and Neon
 
 Known limitations (one shop per user, no email verification yet, and more) are listed in
 [Architecture.md](Architecture.md#14-known-limitations).

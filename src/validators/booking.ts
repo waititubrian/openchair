@@ -1,15 +1,17 @@
 import { z } from "zod";
 import { isValidDateString } from "@/lib/dates";
+import { kenyanPhoneField } from "./fields";
 
 /** "any" = whoever is free; otherwise a staff member's id. */
 const staffChoice = z.union([z.literal("any"), z.string().min(1).max(40)]).default("any");
 
+/** Optional on the form; the service requires it when a deposit must be paid by M-Pesa. */
 const phone = z
   .string()
   .trim()
   .max(20)
-  .regex(/^[0-9+()\-.\s]*$/, "Use digits, spaces, + ( ) - only")
   .transform((v) => (v === "" ? undefined : v))
+  .pipe(kenyanPhoneField.optional())
   .optional();
 
 /** What the public details form submits. Booking time is an ISO instant picked from the slot list. */

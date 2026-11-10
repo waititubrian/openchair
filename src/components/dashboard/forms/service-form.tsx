@@ -62,8 +62,8 @@ export function ServiceForm({
           onChange={(e) => set("durationMin", e.target.value)}
           errors={errors?.durationMin}
         />
-        <FormField label="Price ($)" name="price" inputMode="decimal" value={v.price} onChange={(e) => set("price", e.target.value)} errors={errors?.price} />
-        <FormField label="Deposit ($)" name="deposit" inputMode="decimal" value={v.deposit} onChange={(e) => set("deposit", e.target.value)} errors={errors?.deposit} />
+        <FormField label="Price (KES)" name="price" inputMode="numeric" value={v.price} onChange={(e) => set("price", e.target.value)} errors={errors?.price} />
+        <FormField label="Deposit (KES)" name="deposit" inputMode="numeric" value={v.deposit} onChange={(e) => set("deposit", e.target.value)} errors={errors?.deposit} />
       </div>
       <fieldset className="grid gap-2">
         <legend className="mb-1 text-sm font-medium">Offered by</legend>

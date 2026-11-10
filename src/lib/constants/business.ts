@@ -2,10 +2,16 @@
  * Every tunable business number lives here, so changing pricing or limits is a
  * one-file edit. Nothing else in the codebase should hard-code these values.
  * (All figures are demo values.)
+ *
+ * Money is stored as integer CENTS of KES (100 cents = KES 1) but is always a WHOLE number of
+ * shillings, because M-Pesa cannot collect fractions. So KES 2,500 is 250_000 here.
  */
 import type { Plan } from "@/lib/domain";
 
-export const PLATFORM_FEE_PERCENT = 5; // taken from each customer deposit (Stripe application fee)
+/** The only currency the app uses. (Stored per shop as lowercase text.) */
+export const CURRENCY = "kes";
+
+export const PLATFORM_FEE_PERCENT = 5; // kept by the platform from each customer deposit
 
 export const PLANS = {
   FREE: {
@@ -16,7 +22,7 @@ export const PLANS = {
   },
   PRO: {
     label: "Pro",
-    priceCentsPerMonth: 1900,
+    priceCentsPerMonth: 250_000, // KES 2,500 per 30 days
     maxStaff: Number.POSITIVE_INFINITY,
     maxBookingsPerMonth: Number.POSITIVE_INFINITY,
   },
@@ -29,6 +35,13 @@ export const PLANS = {
     maxBookingsPerMonth: number;
   }
 >;
+
+/**
+ * Pro is PREPAID (M-Pesa can't auto-debit): one payment buys one period. Renewing extends from the
+ * current end date, so paying early loses nothing. After the end there is a grace period during which
+ * Pro keeps working, then the daily job drops the shop to Free.
+ */
+export const SUBSCRIPTION = { periodDays: 30, graceDays: 3 } as const;
 
 export const BOOKING = {
   /** Default minutes a PENDING_PAYMENT booking holds its slot (tenant can override). */
@@ -45,18 +58,17 @@ export const BOOKING = {
   daysPerPage: 7,
 } as const;
 
-/** Stripe cannot charge less than this (USD). A deposit is either 0 or at least this much. */
-export const MIN_DEPOSIT_CENTS = 50;
-
-/** Country new Express connected accounts are created in (the shop confirms it during onboarding). */
-export const CONNECT_COUNTRY = "US";
-
-/**
- * Stripe won't let a Checkout Session live less than 30 minutes, which is longer than the booking
- * hold. We use 31 to stay clear of the boundary. A payment that lands after the hold has lapsed is
- * handled by the webhook (revive the booking if the slot is free, otherwise refund).
- */
-export const CHECKOUT_SESSION_MINUTES = 31;
+/** M-Pesa Express (STK Push) rules. */
+export const MPESA = {
+  /** Safaricom's per-transaction ceiling for STK Push (KES 150,000). */
+  maxAmountCents: 15_000_000,
+  /** Don't send a second prompt to the same booking sooner than this (the first may still be on the phone). */
+  minSecondsBetweenPrompts: 45,
+  /** A booking can have at most this many deposit prompts (stops prompt-spamming a phone number). */
+  maxPromptsPerBooking: 5,
+  /** A prompt nobody answered for this long is treated as expired. */
+  promptExpiresAfterMinutes: 10,
+} as const;
 
 /** Throttle on the PUBLIC booking form (no login to rate-limit by), per client IP and shop. */
 export const PUBLIC_BOOKING_RATE_LIMIT = { windowSeconds: 600, max: 10 } as const;

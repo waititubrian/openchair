@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { detailsPath, servicePath } from "@/lib/booking-links";
 import { formatDateLabel } from "@/lib/dates";
@@ -21,6 +22,7 @@ export default function ServicePage({ params, searchParams }: PageProps<"/b/[ten
 
 async function Picker({ params, searchParams }: Pick<PageProps<"/b/[tenantSlug]/[serviceId]">, "params" | "searchParams">) {
   const { tenantSlug, serviceId } = await params;
+  await connection(); // the page depends on the current time: render per request
   const raw = await searchParams;
   const q = slotPickerQuery.parse({
     staff: Array.isArray(raw.staff) ? raw.staff[0] : raw.staff,
